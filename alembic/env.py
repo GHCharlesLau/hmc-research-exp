@@ -1,6 +1,7 @@
 """Alembic environment configuration for async migrations."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -15,6 +16,17 @@ from models import (  # noqa: F401
 )
 
 config = context.config
+
+# Override sqlalchemy.url from env var (Render provides DATABASE_URL).
+# Convert to asyncpg driver for async migrations.
+db_url = os.environ.get("DATABASE_URL", "")
+if db_url:
+    # Strip existing driver prefix if any
+    if db_url.startswith("postgresql+"):
+        db_url = "postgresql://" + db_url.split("://", 1)[1]
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    config.set_main_option("sqlalchemy.url", db_url)
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

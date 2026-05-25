@@ -36,8 +36,8 @@ Built with Python / FastAPI / WebSocket to replace an oTree-based system that ha
 ### 1. Clone and Install
 
 ```bash
-git clone https://github.com/<your-username>/ConExperiment2.0.git
-cd ConExperiment2.0
+git clone https://github.com/GHCharlesLau/hmc-research-exp.git
+cd hmc-research-exp
 pip install -r requirements.txt
 ```
 
@@ -59,13 +59,19 @@ Edit `.env` with your values:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SECRET_KEY` | Yes | Random string for session security |
-| `DATABASE_URL` | Yes | PostgreSQL async connection string |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (any driver prefix OK, auto-converted) |
 | `REDIS_URL` | Yes | Redis connection string |
-| `OPENAI_API_KEY` | Yes* | Primary LLM API key (or use `LLM_API_BASE` for custom endpoint) |
+| `LLM_API_BASE` | Yes* | Primary LLM gateway URL (e.g. `https://api.n1n.ai/v1`) |
+| `N1N_API_KEY` | Yes* | Primary LLM API key |
 | `ENCRYPTION_KEY` | Yes | Fernet key for encrypting Prolific IDs at rest |
 | `ADMIN_PASSWORD_HASH` | Yes | SHA256 hash of your admin password |
+| `LLM_BACKUP_API_BASE` | No | Fallback LLM gateway URL |
+| `LLM_BACKUP_API_KEY` | No | Fallback LLM API key |
+| `LLM_BACKUP_MODEL` | No | Fallback model name (default: `gpt-4o-mini`) |
+| `PROLIFIC_COMPLETION_URL` | No | Prolific study completion callback URL |
+| `PROLIFIC_API_TOKEN` | No | Prolific API token |
 
-*Or use `LLM_API_BASE` + `N1N_API_KEY` for a custom LLM gateway.
+*Or use `OPENAI_API_KEY` directly (without `LLM_API_BASE`) for the official OpenAI API.
 
 **Generate keys:**
 
@@ -221,32 +227,49 @@ Access at `/admin/login` with your configured password.
 
 ## Deployment on Render
 
-### Create Services
+### Option A: Blueprint (Recommended)
+
+The repo includes a `render.yaml` Blueprint file. In Render Dashboard:
+
+1. Click **"New" -> "Blueprint"**
+2. Connect your GitHub repo (`GHCharlesLau/hmc-research-exp`)
+3. Render auto-creates 3 services: Web Service + PostgreSQL + Redis
+4. Fill in secret env vars in Dashboard -> Environment (see table below)
+5. Deploy
+
+### Option B: Manual Setup
 
 1. **Web Service**: Connect your GitHub repo
    - Build Command: `pip install -r requirements.txt`
-   - Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1`
+   - Start Command: `bash start.sh` (runs `alembic upgrade head` then `uvicorn`)
    - **Workers MUST be 1** (WebSocket constraint)
 
-2. **PostgreSQL**: Create managed PostgreSQL database
+2. **PostgreSQL**: Create managed PostgreSQL database (Starter plan)
 
-3. **Redis**: Create managed Redis instance
+3. **Redis**: Create managed Redis instance (Starter plan)
 
 ### Environment Variables
 
 Set in Render Dashboard > Environment:
 
-| Variable | Source |
-|----------|--------|
-| `DATABASE_URL` | Render PostgreSQL internal URL |
-| `REDIS_URL` | Render Redis internal URL |
-| `SECRET_KEY` | Generate a random string |
-| `OPENAI_API_KEY` | Your LLM API key |
-| `ENCRYPTION_KEY` | Generate with `Fernet.generate_key()` |
-| `ADMIN_PASSWORD_HASH` | SHA256 hash of your admin password |
-| `DEBUG` | `false` |
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `DATABASE_URL` | Auto-injected | Render PostgreSQL internal URL (`postgresql://`, auto-converted to `asyncpg`) |
+| `REDIS_URL` | Auto-injected | Render Redis internal URL |
+| `SECRET_KEY` | Manual | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `LLM_API_BASE` | Manual | Primary LLM gateway URL (e.g. `https://api.n1n.ai/v1`) |
+| `N1N_API_KEY` | Manual | Primary LLM API key |
+| `LLM_BACKUP_API_BASE` | Manual | Fallback LLM gateway URL |
+| `LLM_BACKUP_API_KEY` | Manual | Fallback LLM API key |
+| `LLM_BACKUP_MODEL` | Optional | Default: `gpt-4o-mini` |
+| `ENCRYPTION_KEY` | Manual | Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `ADMIN_PASSWORD_HASH` | Manual | Generate: `python -c "import hashlib; print(hashlib.sha256(b'your-password').hexdigest())"` |
+| `PROLIFIC_COMPLETION_URL` | Manual | Prolific study completion callback (set when going live) |
+| `PROLIFIC_API_TOKEN` | Manual | Prolific API token (set when going live) |
+| `DEBUG` | Default `false` | Set to `true` only for debugging |
+| `DEMO_MODE` | Default `false` | Set to `true` for testing |
 
-Render auto-deploys on git push to the configured branch.
+> **Note**: Render provides `DATABASE_URL` as `postgresql://user:pass@host/db`. The app automatically converts this to `postgresql+asyncpg://` for async operations. No manual URL editing needed.
 
 ## Demo Mode
 
@@ -290,7 +313,7 @@ Run `alembic upgrade head` to apply database migrations.
 Check Docker: `docker-compose ps` and `docker-compose restart redis`.
 
 **Q: LLM not responding?**
-Check `OPENAI_API_KEY` in `.env`. If using a custom endpoint, set `LLM_API_BASE`. The system auto-falls back to a backup provider if `LLM_BACKUP_API_BASE` is configured.
+Check `LLM_API_BASE` and `N1N_API_KEY` (or `OPENAI_API_KEY`) in `.env`. The system auto-falls back to the backup provider (`LLM_BACKUP_API_BASE`) if configured.
 
 **Q: HHC matchmaking not working?**
 You need at least 2 HHC participants simultaneously in the waiting room. If only 1 participant, they will timeout after 120s and fallback to HMC.
