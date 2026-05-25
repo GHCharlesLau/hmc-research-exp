@@ -21,6 +21,7 @@ dump.rdb
 
 # Claude Code (AI memory, plans, session data)
 .claude/
+CLAUDE.md
 
 # IDE
 .vscode/
