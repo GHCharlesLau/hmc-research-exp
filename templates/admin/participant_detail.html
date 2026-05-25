@@ -1,0 +1,229 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<style>
+    .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .detail-header h1 { margin: 0; }
+    .badges { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .badge { padding: 3px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 500; }
+    .badge-blue { background: #e3f2fd; color: #1565c0; }
+    .badge-orange { background: #fff3e0; color: #e65100; }
+    .badge-green { background: #e8f5e9; color: #2e7d32; }
+    .badge-red { background: #ffebee; color: #c62828; }
+    .badge-gray { background: #f5f5f5; color: #616161; }
+    .progress-container { margin: 16px 0 24px; }
+    .progress-bar-bg { background: #e0e0e0; border-radius: 8px; height: 20px; position: relative; overflow: hidden; }
+    .progress-bar-fill { height: 100%; border-radius: 8px; transition: width 0.5s; }
+    .step-labels { display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7rem; color: #888; }
+    .step-labels span.active { color: #1565c0; font-weight: 600; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+    .info-card { background: #f8f9fa; border-radius: 8px; padding: 16px; }
+    .info-card h3 { margin: 0 0 12px; font-size: 0.95rem; color: #333; }
+    .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.85rem; border-bottom: 1px solid #eee; }
+    .info-row:last-child { border-bottom: none; }
+    .info-row .label { color: #666; }
+    .info-row .value { font-weight: 500; }
+    .resume-url-box { background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; display: flex; align-items: center; gap: 12px; }
+    .resume-url-box code { flex: 1; font-family: monospace; font-size: 0.85rem; word-break: break-all; }
+    .section { margin-bottom: 24px; }
+    .section h2 { font-size: 1.1rem; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e0e0e0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    table th, table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #eee; }
+    table th { background: #f5f5f5; font-weight: 600; }
+    .chat-container { background: #f0f0f0; border-radius: 8px; padding: 12px; max-height: 400px; overflow-y: auto; }
+    .chat-msg { margin-bottom: 8px; padding: 8px 12px; border-radius: 8px; max-width: 80%; }
+    .chat-msg.user { background: #e3f2fd; margin-left: auto; }
+    .chat-msg.partner { background: #fff; }
+    .chat-msg .sender { font-size: 0.7rem; color: #888; margin-bottom: 2px; }
+    .chat-msg .text { font-size: 0.85rem; }
+    .over-limit { color: #dc3545; font-weight: 500; }
+    .collapsible-header { cursor: pointer; background: #f5f5f5; padding: 10px 16px; border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center; }
+    .collapsible-body { display: none; }
+    .collapsible-body.open { display: block; }
+    .event-item { padding: 6px 0; border-bottom: 1px solid #f0f0f0; font-size: 0.85rem; }
+    .event-item .time { color: #888; font-size: 0.75rem; margin-right: 8px; }
+    .event-item .event-name { font-weight: 500; }
+</style>
+
+<div style="margin-bottom: 16px;">
+    <a href="/admin/participants" style="color: #1565c0; text-decoration: none;">&larr; Back to Participants</a>
+</div>
+
+<div class="detail-header">
+    <div>
+        <h1>{{ p.display_id }}</h1>
+        <div class="badges">
+            <span class="badge badge-blue">{{ p.task_type.value }}</span>
+            <span class="badge {{ 'badge-orange' if p.partnership.value == 'HHC' else 'badge-gray' }}">{{ p.partnership.value }}</span>
+            <span class="badge badge-gray">{{ p.partner_label.value }}</span>
+            {% if p.is_test %}<span class="badge badge-gray">Test</span>{% endif %}
+            {% if p.is_finished %}<span class="badge badge-green">Finished</span>{% endif %}
+            {% if p.is_timeout %}<span class="badge badge-red">Timeout</span>{% endif %}
+            {% if p.hhc_fallback %}<span class="badge badge-orange">HHC Fallback</span>{% endif %}
+        </div>
+    </div>
+    <div style="text-align: right;">
+        <div style="font-size: 0.85rem; color: #666;">Round {{ p.current_round }}</div>
+        <div style="font-size: 0.85rem; color: #666;">Step: <strong>{{ p.current_step.value }}</strong></div>
+        <div style="font-size: 0.8rem; color: #999;">Created: {{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '' }}</div>
+    </div>
+</div>
+
+{% if resume_url %}
+<div class="resume-url-box">
+    <strong style="font-size: 0.85rem;">Resume URL:</strong>
+    <code id="resume-url">{{ resume_url }}</code>
+    <button onclick="navigator.clipboard.writeText(document.getElementById('resume-url').textContent); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 1500)" style="padding: 4px 12px; border: 1px solid #aaa; border-radius: 4px; background: white; cursor: pointer; font-size: 0.8rem;">Copy</button>
+</div>
+{% endif %}
+
+<!-- Progress Bar -->
+<div class="progress-container">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span style="font-size: 0.85rem; color: #666;">Progress</span>
+        <span style="font-size: 0.85rem; font-weight: 600;">{{ progress }}%</span>
+    </div>
+    <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width: {{ progress }}%; background: {% if progress > 80 %}#4CAF50{% elif progress > 40 %}#ff9800{% else %}#2196F3{% endif %};"></div>
+    </div>
+    <div class="step-labels">
+        {% for s in steps_info %}
+        <span class="{{ 'active' if s.index == current_step_index }}">{{ s.step.replace('_', ' ').split(' ')[:2]|join(' ') }}</span>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Info Grid -->
+<div class="info-grid">
+    <div class="info-card">
+        <h3>Participant Info</h3>
+        <div class="info-row"><span class="label">Display ID</span><span class="value">{{ p.display_id }}</span></div>
+        <div class="info-row"><span class="label">Nickname</span><span class="value">{{ p.nickname or '-' }}</span></div>
+        <div class="info-row"><span class="label">Avatar</span><span class="value">{{ p.avatar or '-' }}</span></div>
+        <div class="info-row"><span class="label">Test</span><span class="value">{{ 'Yes' if p.is_test else 'No' }}</span></div>
+        <div class="info-row"><span class="label">Entry URL</span><span class="value"><a href="/experiment/{{ p.id }}" target="_blank" style="font-size: 0.8rem;">Open</a></span></div>
+    </div>
+    <div class="info-card">
+        <h3>Conditions</h3>
+        <div class="info-row"><span class="label">Task Type</span><span class="value">{{ p.task_type.value }}</span></div>
+        <div class="info-row"><span class="label">Partnership</span><span class="value">{{ p.partnership.value }}</span></div>
+        <div class="info-row"><span class="label">Partner Label</span><span class="value">{{ p.partner_label.value }}</span></div>
+        <div class="info-row"><span class="label">HHC Fallback</span><span class="value">{{ 'Yes' if p.hhc_fallback else 'No' }}</span></div>
+        <div class="info-row"><span class="label">Finished</span><span class="value">{{ 'Yes' if p.is_finished else 'No' }}</span></div>
+    </div>
+</div>
+
+<!-- Step Duration History -->
+{% if step_durations %}
+<div class="section">
+    <h2>Step Duration History</h2>
+    <table>
+        <thead><tr><th>From</th><th>To</th><th>Duration</th><th>Limit</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for d in step_durations %}
+        <tr>
+            <td>{{ d.from_step }}</td>
+            <td>{{ d.to_step }}</td>
+            <td>{{ '%.1f' % d.duration_seconds }}s ({{ '%.0f' % (d.duration_seconds / 60) }}m)</td>
+            <td>{{ '%ds' % d.time_limit if d.time_limit else '-' }}</td>
+            <td class="{{ 'over-limit' if d.is_over_limit else '' }}">{{ 'Over limit!' if d.is_over_limit else 'OK' }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<!-- Chat Rooms -->
+{% if rooms %}
+<div class="section">
+    <h2>Chat History</h2>
+    {% for room in rooms %}
+    <div style="margin-bottom: 16px; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+        <div class="collapsible-header" onclick="this.nextElementSibling.classList.toggle('open')">
+            <span>
+                Round {{ room.round_number }} &mdash; {{ room.room_type }}
+                {% if room.is_active %}<span class="badge badge-green" style="margin-left: 8px;">Active</span>{% endif %}
+                &mdash; {{ room.turn_count }} turns
+                {% if room.duration_seconds %}&mdash; {{ '%.0f' % room.duration_seconds }}s{% endif %}
+            </span>
+            <span>&#9660;</span>
+        </div>
+        <div class="collapsible-body {{ 'open' if room.is_active else '' }}">
+            <div class="chat-container">
+                {% for msg in room.messages %}
+                <div class="chat-msg {{ msg.sender_role }}">
+                    <div class="sender">{{ msg.sender_role }} (turn {{ msg.turn_number }})</div>
+                    <div class="text">{{ msg.text }}</div>
+                </div>
+                {% endfor %}
+                {% if not room.messages %}
+                <p style="color: #888; font-size: 0.85rem; text-align: center; padding: 20px;">No messages yet.</p>
+                {% endif %}
+            </div>
+            {% if room.is_active %}
+            <div style="padding: 8px 12px; text-align: center;">
+                <button onclick="loadChatMessages('{{ room.id }}')" style="padding: 6px 16px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; font-size: 0.8rem;">Refresh Messages</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Survey Responses -->
+{% if survey %}
+<div class="section">
+    <h2>Survey Responses</h2>
+    <div class="info-card">
+        {% for key, value in survey.items() %}
+        {% if value is not none %}
+        <div class="info-row">
+            <span class="label">{{ key }}</span>
+            <span class="value">{{ value }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Event History -->
+{% if events %}
+<div class="section">
+    <h2>Event History</h2>
+    <div style="max-height: 400px; overflow-y: auto;">
+        {% for evt in events %}
+        <div class="event-item">
+            <span class="time">{{ evt.created_at[:19] if evt.created_at else '' }}</span>
+            <span class="event-name">{{ evt.event }}</span>
+            {% if evt.step %}<span style="color: #888; margin-left: 8px;">[{{ evt.step }}]</span>{% endif %}
+            {% if evt.metadata %}
+            <span style="color: #999; margin-left: 8px; font-size: 0.75rem;">{{ evt.metadata | tojson | truncate(100) }}</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<script>
+async function loadChatMessages(roomUuid) {
+    try {
+        const res = await fetch(`/api/admin/chat/${roomUuid}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const container = event.target.closest('.collapsible-body').querySelector('.chat-container');
+        if (!container) return;
+        container.innerHTML = data.messages.map(msg => `
+            <div class="chat-msg ${msg.sender_role}">
+                <div class="sender">${msg.sender_role} (turn ${msg.turn_number})</div>
+                <div class="text">${msg.text}</div>
+            </div>
+        `).join('');
+    } catch (err) {
+        console.error('Failed to load chat messages:', err);
+    }
+}
+</script>
+{% endblock %}

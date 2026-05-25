@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data="waitingRoom()" x-init="init()">
+    <h1>Finding a Conversation Partner</h1>
+    <div class="waiting-status">
+        <div class="spinner"></div>
+        <p x-text="statusText">Connecting...</p>
+        <p x-show="position > 0" style="color: #666; margin-top: 8px;">
+            Your position in queue: <strong x-text="position"></strong>
+        </p>
+        <p x-show="remaining > 0" style="color: #666;">
+            Time remaining: <strong x-text="formatTime(remaining)"></strong>
+        </p>
+    </div>
+</div>
+
+<script>
+function waitingRoom() {
+    return {
+        statusText: 'Connecting...',
+        position: 0,
+        remaining: 0,
+        ws: null,
+        async init() {
+            // Use server-side template variable instead of reading HttpOnly cookie
+            // (HttpOnly cookies are inaccessible to JavaScript)
+            const participantId = '{{ p.id }}';
+
+            const roundNumber = {{ round_number }};
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this.ws = new WebSocket(
+                `${wsProtocol}//${window.location.host}/ws/matchmaking/${participantId}/${roundNumber}`
+            );
+
+            this.ws.onopen = () => {
+                this.statusText = 'Waiting for a partner to join...';
+            };
+
+            this.ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'status') {
+                    this.statusText = data.message;
+                } else if (data.type === 'queue_update') {
+                    this.position = data.position;
+                    this.remaining = data.remaining;
+                } else if (data.type === 'match_found') {
+                    this.statusText = 'Partner found! Redirecting to chat...';
+                    setTimeout(() => {
+                        window.location.href = `/chat?room=${data.room_uuid}`;
+                    }, 1500);
+                } else if (data.type === 'timeout_fallback') {
+                    this.statusText = {{ round_number }} === 1
+                        ? 'A partner has been found! Redirecting to chat...'
+                        : 'Since nobody has joined yet, you will chat with MyBot.';
+                    setTimeout(() => {
+                        window.location.href = `/chat?room=${data.room_uuid}`;
+                    }, 2000);
+                } else if (data.type === 'error') {
+                    this.statusText = 'An error occurred. Please refresh the page.';
+                }
+            };
+
+            this.ws.onclose = () => {
+                if (!this.statusText.includes('Redirecting') && !this.statusText.includes('chat with')) {
+                    this.statusText = 'Connection lost. Reconnecting...';
+                }
+            };
+
+            this.ws.onerror = () => {
+                this.statusText = 'Connection error. Please refresh the page.';
+            };
+        },
+        formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        }
+    };
+}
+</script>
+{% endblock %}

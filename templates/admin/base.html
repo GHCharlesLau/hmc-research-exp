@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - ConExperiment 2.0</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        body.admin-body {
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body class="admin-body">
+    <div class="admin-layout">
+        <div class="admin-sidebar">
+            <h2 style="padding: 0 20px; margin-bottom: 20px;">Admin Panel</h2>
+            <a href="/admin/dashboard" class="{{ 'active' if (nav is defined and nav == 'dashboard') }}">{{ "Dashboard" }}</a>
+            <a href="/admin/participants" class="{{ 'active' if (nav is defined and nav == 'participants') }}">{{ "Participants" }}</a>
+            <a href="/admin/config" class="{{ 'active' if (nav is defined and nav == 'config') }}">{{ "Config" }}</a>
+            <a href="/admin/export" class="{{ 'active' if (nav is defined and nav == 'export') }}">{{ "Data Export" }}</a>
+            <a href="/admin/test-tools" class="{{ 'active' if (nav is defined and nav == 'test-tools') }}" style="color: #e67e22;">{{ "Test Tools" }}</a>
+            <a href="/admin/logout" style="margin-top: 40px;">Logout</a>
+        </div>
+        <div class="admin-content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</body>
+</html>

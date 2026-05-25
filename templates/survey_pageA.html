@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "macros/likert.html" import likert_scale %}
+{% block content %}
+<h1>Questionnaire - Page 1 of 4</h1>
+<p>Regarding the <span style="font-style: italic; font-weight: bold; color: red;">first-round conversation</span>, please rate the following statements on a scale from 1 (Strongly Disagree) to 7 (Strongly Agree).</p>
+
+{% if error %}
+<div class="error-banner" style="background: #fee; border: 1px solid #fcc; padding: 10px; border-radius: 4px; margin-bottom: 16px; color: #c00;">{{ error }}</div>
+{% endif %}
+
+<form method="POST" action="/survey/a">
+    {% set q_num = namespace(value=1) %}
+    {% for scale in scales %}
+        {{ likert_scale(scale, q_num.value, form_data) }}
+        {% set q_num.value = q_num.value + scale.items|length %}
+    {% endfor %}
+    <button type="submit" class="btn">Next Page</button>
+</form>
+{% endblock %}

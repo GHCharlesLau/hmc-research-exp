@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "macros/likert.html" import likert_scale_local_numbering %}
+{% block content %}
+<h1>Demographics - Page 4 of 4</h1>
+<p>Please provide some information about yourself. All responses are confidential.</p>
+
+{% if error %}
+<div class="error-banner" style="background: #fee; border: 1px solid #fcc; padding: 10px; border-radius: 4px; margin-bottom: 16px; color: #c00;">{{ error }}</div>
+{% endif %}
+
+<form method="POST" action="/survey/demographics">
+    <div class="form-group">
+        <label for="age">What is your age?</label>
+        <input type="number" id="age" name="age" min="18" max="120" required value="{{ form_data.age if form_data else '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="gender">What is your gender?</label>
+        <select id="gender" name="gender" required>
+            <option value="">-- Select --</option>
+            <option value="Male" {{ 'selected' if form_data and form_data.get('gender') == 'Male' }}>Male</option>
+            <option value="Female" {{ 'selected' if form_data and form_data.get('gender') == 'Female' }}>Female</option>
+            <option value="Non-binary" {{ 'selected' if form_data and form_data.get('gender') == 'Non-binary' }}>Non-binary</option>
+            <option value="Other" {{ 'selected' if form_data and form_data.get('gender') == 'Other' }}>Other</option>
+            <option value="Prefer not to say" {{ 'selected' if form_data and form_data.get('gender') == 'Prefer not to say' }}>Prefer not to say</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="race">What is your race/ethnicity?</label>
+        <select id="race" name="race" required>
+            <option value="">-- Select --</option>
+            <option value="White" {{ 'selected' if form_data and form_data.get('race') == 'White' }}>White</option>
+            <option value="Black or African American" {{ 'selected' if form_data and form_data.get('race') == 'Black or African American' }}>Black or African American</option>
+            <option value="Hispanic or Latino" {{ 'selected' if form_data and form_data.get('race') == 'Hispanic or Latino' }}>Hispanic or Latino</option>
+            <option value="Asian" {{ 'selected' if form_data and form_data.get('race') == 'Asian' }}>Asian</option>
+            <option value="Native American or Alaska Native" {{ 'selected' if form_data and form_data.get('race') == 'Native American or Alaska Native' }}>Native American or Alaska Native</option>
+            <option value="Native Hawaiian or Pacific Islander" {{ 'selected' if form_data and form_data.get('race') == 'Native Hawaiian or Pacific Islander' }}>Native Hawaiian or Pacific Islander</option>
+            <option value="Other" {{ 'selected' if form_data and form_data.get('race') == 'Other' }}>Other</option>
+            <option value="Prefer not to say" {{ 'selected' if form_data and form_data.get('race') == 'Prefer not to say' }}>Prefer not to say</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="education">What is your highest level of education?</label>
+        <select id="education" name="education" required>
+            <option value="">-- Select --</option>
+            <option value="Less than high school" {{ 'selected' if form_data and form_data.get('education') == 'Less than high school' }}>Less than high school</option>
+            <option value="High school diploma or equivalent" {{ 'selected' if form_data and form_data.get('education') == 'High school diploma or equivalent' }}>High school diploma or equivalent</option>
+            <option value="Some college" {{ 'selected' if form_data and form_data.get('education') == 'Some college' }}>Some college</option>
+            <option value="Associate's degree" {{ 'selected' if form_data and form_data.get('education') == "Associate's degree" }}>Associate's degree</option>
+            <option value="Bachelor's degree" {{ 'selected' if form_data and form_data.get('education') == "Bachelor's degree" }}>Bachelor's degree</option>
+            <option value="Master's degree" {{ 'selected' if form_data and form_data.get('education') == "Master's degree" }}>Master's degree</option>
+            <option value="Doctoral degree" {{ 'selected' if form_data and form_data.get('education') == 'Doctoral degree' }}>Doctoral degree</option>
+            <option value="Professional degree" {{ 'selected' if form_data and form_data.get('education') == 'Professional degree' }}>Professional degree</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="partisanship">How would you describe your political orientation?</label>
+        <select id="partisanship" name="partisanship" required>
+            <option value="">-- Select --</option>
+            <option value="Very liberal" {{ 'selected' if form_data and form_data.get('partisanship') == 'Very liberal' }}>Very liberal</option>
+            <option value="Liberal" {{ 'selected' if form_data and form_data.get('partisanship') == 'Liberal' }}>Liberal</option>
+            <option value="Moderate" {{ 'selected' if form_data and form_data.get('partisanship') == 'Moderate' }}>Moderate</option>
+            <option value="Conservative" {{ 'selected' if form_data and form_data.get('partisanship') == 'Conservative' }}>Conservative</option>
+            <option value="Very conservative" {{ 'selected' if form_data and form_data.get('partisanship') == 'Very conservative' }}>Very conservative</option>
+            <option value="Prefer not to say" {{ 'selected' if form_data and form_data.get('partisanship') == 'Prefer not to say' }}>Prefer not to say</option>
+        </select>
+    </div>
+
+    {# Religiosity — data-driven Likert scale #}
+    {% for scale in scales %}
+        {{ likert_scale_local_numbering(scale, form_data) }}
+    {% endfor %}
+
+    <button type="submit" class="btn">Submit - Continue to Completion</button>
+</form>
+{% endblock %}

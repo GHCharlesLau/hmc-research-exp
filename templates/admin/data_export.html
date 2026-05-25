@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<h1>Data Export</h1>
+<p>Download experiment data in CSV format.</p>
+
+<div style="margin: 12px 0; padding: 10px 16px; background: #fff3cd; border-radius: 6px; display: inline-block;">
+    <label style="cursor: pointer;">
+        <input type="checkbox" id="include-test"> Include test participants
+    </label>
+    <span style="font-size: 0.85rem; color: #856404;"> (default: test data excluded)</span>
+</div>
+
+<div style="margin: 20px 0;">
+    <h3>Participant Table (Wide Format)</h3>
+    <p>One row per participant, including survey responses and chat stats.</p>
+    <button class="btn" onclick="exportData('participants')">Download Participants CSV</button>
+</div>
+
+<div style="margin: 20px 0;">
+    <h3>Chat Messages (Long Format)</h3>
+    <p>One row per chat message, including sender, text, and timestamp.</p>
+    <button class="btn" onclick="exportData('chat')">Download Chat Messages CSV</button>
+</div>
+
+<script>
+async function exportData(format) {
+    const includeTest = document.getElementById('include-test').checked;
+    const resp = await fetch(`/admin/export/${format}?include_test=${includeTest}`);
+    if (!resp.ok) {
+        alert('Export failed');
+        return;
+    }
+    const data = await resp.json();
+    const blob = new Blob(['﻿' + data.csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = data.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,538 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<h2>Test Tools</h2>
+<p style="color: #666; margin-bottom: 20px;">Create test participants, control steps, and test HHC matching. Test participants are marked with <code>is_test=True</code> and excluded from data exports by default.</p>
+
+<!-- Demo Mode Status -->
+<div style="margin-bottom: 20px; padding: 16px; border: 1px solid #ddd; border-radius: 8px; background: {{ '#fff3cd' if demo_mode else '#f8f9fa' }};">
+    <strong>Demo Mode: </strong>
+    <span style="color: {{ '#d9534f' if demo_mode else '#28a745' }}; font-weight: bold;">{{ 'ON' if demo_mode else 'OFF' }}</span>
+    {% if demo_mode %}
+    <span style="color: #856404; font-size: 0.9rem;">
+        &mdash; Reduced turns (2-5), shorter timeouts (10s HHC / 120s chat), Prolific checks skipped.
+    </span>
+    {% endif %}
+    <p style="margin: 8px 0 0; font-size: 0.85rem; color: #666;">
+        Toggle via <code>DEMO_MODE=true</code> in <code>.env</code> or environment variables.
+    </p>
+</div>
+
+<!-- Quick Actions Bar -->
+<div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
+    <button onclick="toggleCustomCreate()" class="btn" style="background: #4CAF50; color: white; font-size: 1rem; padding: 10px 20px;">
+        + Create Participant by Condition
+    </button>
+    <button onclick="toggleMatchmakingForm()" class="btn" style="background: #2196F3; color: white;">
+        Matchmaking Flow Test (HHC)
+    </button>
+    <button onclick="quickCreateHHC()" class="btn" style="background: #e67e22; color: white;">
+        Quick Create HHC (Pair at Chat)
+    </button>
+</div>
+
+<!-- Create Participant by Condition (prominent, toggle) -->
+<div id="custom-create-panel" style="display: none; padding: 20px; border: 2px solid #4CAF50; border-radius: 8px; margin-bottom: 20px; background: #f0fff0;">
+    <h3 style="margin-top: 0; color: #2e7d32;">Create Participant by Experimental Condition</h3>
+    <p style="font-size: 0.85rem; color: #666; margin-bottom: 16px;">Select the 2x2x2 factorial conditions. Participant starts at <strong>instructions_r1</strong>.</p>
+    <form id="custom-create-form">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <label style="font-weight: 600;">
+                Task Type
+                <select name="task_type" style="width: 100%; margin-top: 4px; padding: 8px;">
+                    <option value="emotionTask">emotionTask (Emotional)</option>
+                    <option value="functionTask">functionTask (Functional)</option>
+                </select>
+            </label>
+            <label style="font-weight: 600;">
+                Partnership
+                <select name="partnership" style="width: 100%; margin-top: 4px; padding: 8px;">
+                    <option value="HMC">HMC (Human-Machine)</option>
+                    <option value="HHC">HHC (Human-Human)</option>
+                </select>
+            </label>
+            <label style="font-weight: 600;">
+                Partner Label
+                <select name="partner_label" style="width: 100%; margin-top: 4px; padding: 8px;">
+                    <option value="chatbot">chatbot (MyBot)</option>
+                    <option value="human">human (Another Participant)</option>
+                </select>
+            </label>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+            <label style="font-weight: 600;">
+                Nickname
+                <input type="text" name="nickname" value="TestUser" style="width: 100%; margin-top: 4px; padding: 8px;">
+            </label>
+            <label style="font-weight: 600;">
+                Avatar
+                <select name="avatar" style="width: 100%; margin-top: 4px; padding: 8px;">
+                    <option value="lion.png">lion.png</option>
+                    <option value="rabbit.png">rabbit.png</option>
+                    <option value="tiger.png">tiger.png</option>
+                    <option value="fox.png">fox.png</option>
+                </select>
+            </label>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button type="submit" class="btn" style="background: #4CAF50; color: white; padding: 10px 24px; font-size: 1rem;">Create Participant</button>
+            <span style="font-size: 0.85rem; color: #888;">Condition: <strong id="condition-preview">emotionTask x HMC x chatbot</strong></span>
+        </div>
+    </form>
+    <div id="custom-create-result" style="margin-top: 12px; display: none; padding: 12px; background: #d4edda; border-radius: 6px;"></div>
+</div>
+
+<!-- Matchmaking Flow Test Form (hidden by default) -->
+<div id="matchmaking-form" style="display: none; padding: 16px; border: 1px solid #2196F3; border-radius: 8px; margin-bottom: 20px; background: #f5f9ff;">
+    <h3 style="margin-top: 0;">Matchmaking Flow Test</h3>
+    <p style="font-size: 0.85rem; color: #666;">Creates two HHC participants at <strong>instructions_r1</strong>. Open both URLs in <strong>separate incognito windows</strong>, navigate through instructions, then test the real waiting room + matchmaking flow.</p>
+    <form id="matchmaking-test-form">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px;">
+            <label>
+                Task Type
+                <select name="task_type" style="width: 100%;">
+                    <option value="emotionTask">emotionTask</option>
+                    <option value="functionTask">functionTask</option>
+                </select>
+            </label>
+            <label>
+                Nickname A
+                <input type="text" name="nickname1" value="TestAlice" style="width: 100%;">
+            </label>
+            <label>
+                Nickname B
+                <input type="text" name="nickname2" value="TestBob" style="width: 100%;">
+            </label>
+            <div style="display: flex; align-items: flex-end;">
+                <button type="submit" class="btn" style="width: 100%; background: #2196F3; color: white;">Create & Show URLs</button>
+            </div>
+        </div>
+    </form>
+    <div id="matchmaking-result" style="margin-top: 12px; display: none; padding: 12px; background: #d4edda; border-radius: 6px;"></div>
+</div>
+
+<!-- Quick Create Result -->
+<div id="quick-create-result" style="margin-bottom: 20px; display: none; padding: 12px; background: #d4edda; border-radius: 6px;"></div>
+
+<!-- HHC Pair Quick Create Result -->
+<div id="hhc-pair-result" style="margin-bottom: 20px; display: none; padding: 12px; background: #fff3cd; border-radius: 6px;"></div>
+
+<!-- Test Participant Dashboard -->
+<div style="margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h2>Test Participants</h2>
+        <button onclick="loadTestParticipants()" class="btn" style="padding: 6px 16px; font-size: 0.9rem;">Refresh</button>
+    </div>
+    <div style="overflow-x: auto;">
+        <table id="test-participants-table" style="font-size: 0.9rem;">
+            <thead>
+                <tr>
+                    <th>Display ID</th>
+                    <th>Nickname</th>
+                    <th>Task</th>
+                    <th>Partnership</th>
+                    <th>Current Step</th>
+                    <th>Round</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="test-participants-body">
+                <tr><td colspan="7" style="color: #888;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Step Control -->
+<div style="padding: 20px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 20px;">
+    <h3 style="margin-top: 0;">Step Control</h3>
+    <p style="font-size: 0.85rem; color: #666;">Jump a test participant to any step. For chat steps (HMC), a ChatRoom will be auto-created.</p>
+    <form id="step-form">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <label>
+                Participant
+                <select name="participant_id" id="step-participant-select" style="width: 100%;">
+                    <option value="">-- select participant --</option>
+                </select>
+            </label>
+            <label>
+                Set Step
+                <select name="step" style="width: 100%;">
+                    <option value="consent">consent</option>
+                    <option value="welcome">welcome</option>
+                    <option value="priming">priming</option>
+                    <option value="instructions_r1">instructions_r1</option>
+                    <option value="chat_r1">chat_r1</option>
+                    <option value="instructions_r2">instructions_r2</option>
+                    <option value="chat_r2">chat_r2</option>
+                    <option value="survey_prompt">survey_prompt</option>
+                    <option value="survey_a">survey_a</option>
+                    <option value="survey_b">survey_b</option>
+                    <option value="demographics">demographics</option>
+                    <option value="payment">payment</option>
+                </select>
+            </label>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Apply</button>
+    </form>
+    <div id="step-result" style="margin-top: 12px; display: none; padding: 12px; background: #d4edda; border-radius: 6px;"></div>
+</div>
+
+<!-- Advanced Tools (collapsible) -->
+<details style="margin-bottom: 20px;">
+    <summary style="cursor: pointer; font-weight: bold; font-size: 1.1rem; margin-bottom: 12px;">Advanced: Create Participant / HHC Queue</summary>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Create Test Participant (original form) -->
+        <div style="padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+            <h3 style="margin-top: 0;">Create Test Participant (Custom)</h3>
+            <form id="create-form">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <label>
+                        Task Type
+                        <select name="task_type" style="width: 100%;">
+                            <option value="emotionTask">emotionTask</option>
+                            <option value="functionTask">functionTask</option>
+                        </select>
+                    </label>
+                    <label>
+                        Partnership
+                        <select name="partnership" style="width: 100%;">
+                            <option value="HHC">HHC</option>
+                            <option value="HMC">HMC</option>
+                        </select>
+                    </label>
+                    <label>
+                        Partner Label
+                        <select name="partner_label" style="width: 100%;">
+                            <option value="chatbot">chatbot (MyBot)</option>
+                            <option value="human">human (Tommy)</option>
+                        </select>
+                    </label>
+                    <label>
+                        Start Step
+                        <select name="start_step" style="width: 100%;">
+                            <option value="instructions_r1">instructions_r1</option>
+                            <option value="chat_r1">chat_r1</option>
+                            <option value="instructions_r2">instructions_r2</option>
+                            <option value="chat_r2">chat_r2</option>
+                            <option value="survey_prompt">survey_prompt</option>
+                            <option value="survey_a">survey_a</option>
+                            <option value="survey_b">survey_b</option>
+                            <option value="demographics">demographics</option>
+                            <option value="payment">payment</option>
+                        </select>
+                    </label>
+                    <label>
+                        Nickname
+                        <input type="text" name="nickname" value="TestUser" style="width: 100%;">
+                    </label>
+                    <label>
+                        Avatar
+                        <select name="avatar" style="width: 100%;">
+                            <option value="lion.png">lion.png</option>
+                            <option value="rabbit.png">rabbit.png</option>
+                            <option value="tiger.png">tiger.png</option>
+                            <option value="fox.png">fox.png</option>
+                        </select>
+                    </label>
+                </div>
+                <button type="submit" class="btn" style="margin-top: 12px; width: 100%;">Create Participant</button>
+            </form>
+            <div id="create-result" style="margin-top: 12px; display: none; padding: 12px; background: #d4edda; border-radius: 6px;"></div>
+        </div>
+
+        <!-- HHC Queue Status -->
+        <div style="padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+            <h3 style="margin-top: 0;">HHC Queue Status</h3>
+            <button id="refresh-queues" class="btn" style="margin-bottom: 12px;">Refresh</button>
+            <div id="queue-status"></div>
+        </div>
+    </div>
+</details>
+
+<!-- Test Data Management -->
+<div style="padding: 20px; border: 1px solid #e74c3c; border-radius: 8px; background: #fff5f5;">
+    <h3 style="margin-top: 0; color: #c0392b;">Test Data Management</h3>
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+        <span id="test-count" style="color: #666;">Loading...</span>
+        <button onclick="cleanupAll()" style="padding: 8px 16px; border: 1px solid #e74c3c; border-radius: 4px; cursor: pointer; background: #e74c3c; color: white; font-weight: bold;">Delete All Test Data</button>
+    </div>
+    <div id="delete-result" style="margin-top: 12px; display: none; padding: 12px; background: #d4edda; border-radius: 6px;"></div>
+</div>
+
+<script>
+// ── Custom Create by Condition ─────────────────────────────
+function toggleCustomCreate() {
+    const el = document.getElementById('custom-create-panel');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// Live condition preview
+document.getElementById('custom-create-form').addEventListener('change', updateConditionPreview);
+function updateConditionPreview() {
+    const form = document.getElementById('custom-create-form');
+    const taskType = form.querySelector('[name="task_type"]').value;
+    const partnership = form.querySelector('[name="partnership"]').value;
+    const partnerLabel = form.querySelector('[name="partner_label"]').value;
+    const shortTask = taskType === 'emotionTask' ? 'Emo' : 'Func';
+    const shortPart = partnership;
+    const shortLabel = partnerLabel === 'chatbot' ? 'Bot' : 'Hum';
+    document.getElementById('condition-preview').textContent = `${shortTask} x ${shortPart} x ${shortLabel}`;
+}
+
+document.getElementById('custom-create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const body = new URLSearchParams(new FormData(form));
+    body.set('start_step', 'instructions_r1');  // always start at instructions_r1
+    try {
+        const res = await fetch('/api/admin/test/participant', { method: 'POST', body });
+        const data = await res.json();
+        if (data.detail) { alert('Error: ' + data.detail); return; }
+        const el = document.getElementById('custom-create-result');
+        el.style.display = 'block';
+        el.innerHTML = `<strong>Created ${data.display_id}</strong> (${body.get('task_type')} / ${body.get('partnership')} / ${body.get('partner_label')})<br>
+            <a href="${data.url}" target="_blank" style="font-size: 1.1rem; font-weight: bold;">${data.url}</a><br>
+            <small>Resume: <a href="${data.resume_url || '#'}" target="_blank">${data.resume_url || 'N/A'}</a></small>`;
+        loadTestParticipants();
+        loadParticipantOptions();
+        loadTestCount();
+    } catch (err) { alert('Request failed: ' + err); }
+});
+
+// ── Quick Create HHC Pair at Chat ────────────────────────
+async function quickCreateHHC() {
+    const taskType = prompt('Task type?', 'emotionTask');
+    if (!taskType) return;
+    const body = new URLSearchParams({
+        task_type: taskType,
+        round_number: '1',
+        nickname1: 'Alice',
+        nickname2: 'Bob',
+    });
+    try {
+        const res = await fetch('/api/admin/test/create-pair', { method: 'POST', body });
+        const data = await res.json();
+        if (data.detail) { alert('Error: ' + data.detail); return; }
+        const el = document.getElementById('hhc-pair-result');
+        el.style.display = 'block';
+        el.innerHTML = `<strong>HHC Pair at Chat!</strong> (Room: ${data.room_id})<br><br>
+            <strong>A (${data.participant1.display_id}):</strong>
+            <a href="${data.participant1.entry_url}" target="_blank">Open</a> |
+            <a href="${data.participant1.room_url}" target="_blank">Chat</a><br>
+            <strong>B (${data.participant2.display_id}):</strong>
+            <a href="${data.participant2.entry_url}" target="_blank">Open</a> |
+            <a href="${data.participant2.room_url}" target="_blank">Chat</a>`;
+        loadTestParticipants();
+        loadTestCount();
+    } catch (err) { alert('Request failed: ' + err); }
+}
+
+// ── Matchmaking Flow Test ────────────────────────────────
+function toggleMatchmakingForm() {
+    const el = document.getElementById('matchmaking-form');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+document.getElementById('matchmaking-test-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const body = new URLSearchParams(new FormData(form));
+    try {
+        const res = await fetch('/api/admin/test/matchmaking-test', { method: 'POST', body });
+        const data = await res.json();
+        if (data.detail) { alert('Error: ' + data.detail); return; }
+        const el = document.getElementById('matchmaking-result');
+        el.style.display = 'block';
+        el.innerHTML = `<strong>Matchmaking Test Pair Created!</strong><br>
+            <span style="color: #e65100; font-weight: bold;">Open each URL in a separate incognito window!</span><br><br>
+            <strong>A (${data.participant1.display_id} - ${data.participant1.nickname}):</strong><br>
+            <a href="${data.participant1.url}" target="_blank">${data.participant1.url}</a><br><br>
+            <strong>B (${data.participant2.display_id} - ${data.participant2.nickname}):</strong><br>
+            <a href="${data.participant2.url}" target="_blank">${data.participant2.url}</a>`;
+        loadTestParticipants();
+        loadTestCount();
+    } catch (err) { alert('Request failed: ' + err); }
+});
+
+// ── Test Participant Dashboard Table ─────────────────────
+async function loadTestParticipants() {
+    try {
+        const res = await fetch('/api/admin/test/participants');
+        const data = await res.json();
+        const tbody = document.getElementById('test-participants-body');
+        const list = data.participants || [];
+
+        if (list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="color: #888;">No test participants.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = list.map(p => {
+            const stepColor = p.current_step.startsWith('chat') ? '#fff3e0' :
+                               p.current_step.startsWith('instructions') ? '#e3f2fd' :
+                               p.current_step.startsWith('survey') ? '#f3e5f5' : '#f5f5f5';
+            return `<tr>
+                <td><strong>${p.display_id}</strong></td>
+                <td>${p.nickname || '-'}</td>
+                <td>${p.task_type}</td>
+                <td>${p.partnership}</td>
+                <td><code style="background: ${stepColor}; padding: 2px 6px; border-radius: 3px;">${p.current_step}</code></td>
+                <td>R${p.current_round}</td>
+                <td style="white-space: nowrap;">
+                    <a href="/experiment/${p.id}" target="_blank" style="margin-right: 6px; font-size: 0.85rem;">Open</a>
+                    <button onclick="nextStep('${p.id}')" style="font-size: 0.8rem; padding: 2px 8px; cursor: pointer;">Next >></button>
+                    <button onclick="deleteTestParticipant('${p.id}', '${p.display_id}')" style="font-size: 0.8rem; padding: 2px 8px; cursor: pointer; color: #c0392b;">Delete</button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (err) { console.error(err); }
+}
+
+async function nextStep(participantId) {
+    const body = new URLSearchParams({ participant_id: participantId });
+    try {
+        const res = await fetch('/api/admin/test/next-step', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok) { alert(data.detail || 'Failed'); return; }
+        loadTestParticipants();
+        loadParticipantOptions();
+    } catch (err) { alert('Request failed: ' + err); }
+}
+
+async function deleteTestParticipant(id, displayId) {
+    if (!confirm(`Delete test participant ${displayId}?`)) return;
+    const body = new URLSearchParams({ participant_id: id });
+    try {
+        const res = await fetch('/api/admin/test/delete-participant', { method: 'POST', body });
+        const data = await res.json();
+        if (!res.ok) { alert(data.detail || 'Delete failed'); return; }
+        loadTestParticipants();
+        loadParticipantOptions();
+        loadTestCount();
+    } catch (err) { alert('Request failed: ' + err); }
+}
+
+// ── Step Control (dropdown) ──────────────────────────────
+async function loadParticipantOptions() {
+    try {
+        const res = await fetch('/api/admin/test/participant-options');
+        const data = await res.json();
+        const select = document.getElementById('step-participant-select');
+        select.innerHTML = '<option value="">-- select participant --</option>';
+        for (const p of (data.participants || [])) {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `${p.display_id} - ${p.nickname || '(no name)'} [${p.current_step}]`;
+            select.appendChild(opt);
+        }
+    } catch (err) { console.error(err); }
+}
+
+document.getElementById('step-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const body = new URLSearchParams(new FormData(form));
+    try {
+        const res = await fetch('/api/admin/test/set-step', { method: 'POST', body });
+        if (!res.ok) {
+            const data = await res.json();
+            alert(data.detail || 'Request failed');
+            return;
+        }
+        const data = await res.json();
+        const result = document.getElementById('step-result');
+        result.style.display = 'block';
+        result.textContent = data.detail;
+        loadTestParticipants();
+        loadParticipantOptions();
+    } catch (err) { alert('Request failed: ' + err); }
+});
+
+// ── Original Create Participant Form ─────────────────────
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const body = new URLSearchParams(new FormData(form));
+    try {
+        const res = await fetch('/api/admin/test/participant', { method: 'POST', body });
+        const data = await res.json();
+        if (data.detail) { alert('Error: ' + data.detail); return; }
+        const result = document.getElementById('create-result');
+        result.style.display = 'block';
+        result.innerHTML = `<strong>Created ${data.display_id}</strong><br>
+            <a href="${data.url}" target="_blank">${data.url}</a><br>
+            <small>ID: ${data.participant_id}</small>`;
+        loadTestParticipants();
+        loadParticipantOptions();
+        loadTestCount();
+    } catch (err) { alert('Request failed: ' + err); }
+});
+
+// ── HHC Queue Status ─────────────────────────────────────
+async function loadQueues() {
+    try {
+        const res = await fetch('/api/admin/test/hhc-queues');
+        const data = await res.json();
+        const container = document.getElementById('queue-status');
+        const queues = data.queues || {};
+        if (Object.keys(queues).length === 0) {
+            container.innerHTML = '<p style="color: #888;">No active queues.</p>';
+            return;
+        }
+        let html = '';
+        for (const [name, members] of Object.entries(queues)) {
+            const count = members.length;
+            html += `<div style="padding: 8px 0; border-bottom: 1px solid #eee;">
+                <strong>${name}</strong>: ${count} waiting
+                ${count > 0 ? `<button onclick="clearQueue('${name}')" style="margin-left: 10px; font-size: 0.8rem; padding: 2px 8px;">Clear</button>` : ''}
+            </div>`;
+        }
+        container.innerHTML = html;
+    } catch (err) { console.error(err); }
+}
+
+async function clearQueue(name) {
+    if (!confirm('Clear queue ' + name + '?')) return;
+    const body = new URLSearchParams({ queue_name: name });
+    const res = await fetch('/api/admin/test/clear-queue', { method: 'POST', body });
+    const data = await res.json();
+    loadQueues();
+}
+
+document.getElementById('refresh-queues').addEventListener('click', loadQueues);
+
+// ── Test Data Management ─────────────────────────────────
+async function loadTestCount() {
+    try {
+        const res = await fetch('/api/admin/test/count');
+        const data = await res.json();
+        document.getElementById('test-count').textContent = `${data.count} test participant(s) in database`;
+    } catch (err) { console.error(err); }
+}
+
+async function cleanupAll() {
+    if (!confirm('Delete ALL test participants and their data? This cannot be undone.')) return;
+    try {
+        const res = await fetch('/api/admin/test/cleanup-all', { method: 'POST' });
+        if (!res.ok) {
+            const data = await res.json();
+            alert('Error: ' + (data.detail || 'Cleanup failed'));
+            return;
+        }
+        const data = await res.json();
+        const result = document.getElementById('delete-result');
+        result.style.display = 'block';
+        result.textContent = data.detail;
+        loadTestParticipants();
+        loadParticipantOptions();
+    } catch (err) { alert('Request failed: ' + err); }
+}
+
+// ── Initialize ────────────────────────────────────────────
+loadTestParticipants();
+loadParticipantOptions();
+loadQueues();
+loadTestCount();
+</script>
+{% endblock %}

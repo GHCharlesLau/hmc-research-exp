@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Study Complete!</h1>
+
+<p>Thank you for participating in this study. Your responses have been recorded.</p>
+
+<div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center;">
+    <h2 style="color: #2e7d32;">Completion Code</h2>
+    <p style="font-size: 1.4rem; font-weight: bold; font-family: monospace; letter-spacing: 2px;">{{ completion_code }}</p>
+</div>
+
+<p>Please copy the completion code above and enter it on Prolific to receive your payment.</p>
+
+<p>You may now close this browser tab. Thank you for your time!</p>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Informed Consent</h1>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="consent-box" style="font-size: 16px; line-height: 1.8;">
+    <p>Dear Participant,</p>
+
+    <p>Welcome to our study!</p>
+
+    <p><b>Description of the study</b>: <span style="color:red;">You will have conversations with two different partners to complete the same task twice.</span>
+    Afterward, we'll ask you to share your thoughts and experiences.</p>
+
+    <p><b>Target participants</b>: Adults above 18.</p>
+
+    <p><b>Risks and Information protection</b>: There are no risks involved in participating in this study, and we are committed to protecting your privacy. Your personal information will not be collected, and you have the right to withdraw from the study at any time.</p>
+
+    <p><b>Contact details</b>: If you have any questions, please feel free to contact the principal investigator Prof. Liang by email: <a href="mailto:haliang@cuhk.edu.hk">haliang@cuhk.edu.hk</a>.
+    If you have any questions regarding research ethics, please get in touch with the Survey and Behavioural Research Ethics Committee at <a href="mailto:fssc02@cuhk.edu.hk">fssc02@cuhk.edu.hk</a>.</p>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <p>Do you agree to participate in this study?</p>
+    </div>
+</div>
+
+<form method="POST" action="/consent">
+    <input type="hidden" name="prolific_id" value="{{ prolific_id or '' }}">
+    <input type="hidden" name="session_id" value="{{ session_id or '' }}">
+    <input type="hidden" name="study_id" value="{{ study_id or '' }}">
+    <div style="margin-top: 20px; display: flex; gap: 12px; justify-content: center;">
+        <button type="submit" name="consent" value="agree" class="btn">Yes</button>
+        <button type="submit" name="consent" value="decline" class="btn btn-secondary">No</button>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<style>
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    table th, table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #eee; }
+    table th { background: #f5f5f5; font-weight: 600; }
+    .progress-bar { height: 12px; width: 100px; background: #eee; border-radius: 6px; position: relative; display: inline-block; vertical-align: middle; }
+    .progress-fill { height: 100%; border-radius: 6px; }
+    .progress-text { font-size: 0.75rem; color: #666; margin-left: 6px; }
+    .badge { padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 500; }
+    .badge-finished { background: #e8f5e9; color: #2e7d32; }
+    .badge-active { background: #e3f2fd; color: #1565c0; }
+    .badge-timeout { background: #ffebee; color: #c62828; }
+    .view-link { color: #1565c0; text-decoration: none; font-size: 0.85rem; }
+    .view-link:hover { text-decoration: underline; }
+</style>
+
+<h1>Participants</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Display ID</th>
+            <th>Nickname</th>
+            <th>Task</th>
+            <th>Partnership</th>
+            <th>Label</th>
+            <th>Step</th>
+            <th>Round</th>
+            <th>Progress</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% set step_order = ['consent', 'welcome', 'priming', 'instructions_r1', 'chat_r1', 'instructions_r2', 'chat_r2', 'survey_prompt', 'survey_a', 'survey_b', 'demographics', 'payment'] %}
+        {% for p in participants %}
+        {% set progress = ((step_order.index(p.current_step.value) / 11) * 100)|round(0)|int %}
+        {% set bar_color = '#4CAF50' if progress > 80 else ('#ff9800' if progress > 40 else '#2196F3') %}
+        <tr>
+            <td><strong>{{ p.display_id }}</strong></td>
+            <td>{{ p.nickname or '-' }}</td>
+            <td>{{ p.task_type.value }}</td>
+            <td>{{ p.partnership.value }}</td>
+            <td>{{ p.partner_label.value }}</td>
+            <td>{{ p.current_step.value }}</td>
+            <td>{{ p.current_round }}</td>
+            <td>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ progress }}%; background: {{ bar_color }};"></div>
+                </div>
+                <span class="progress-text">{{ progress }}%</span>
+            </td>
+            <td>
+                {% if p.is_finished %}
+                    <span class="badge badge-finished">Finished</span>
+                {% elif p.is_timeout %}
+                    <span class="badge badge-timeout">Timeout</span>
+                {% else %}
+                    <span class="badge badge-active">Active</span>
+                {% endif %}
+            </td>
+            <td style="font-size: 0.8rem; color: #666;">{{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '' }}</td>
+            <td><a href="/admin/participant/{{ p.display_id }}" class="view-link">View</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not participants %}
+<p>No participants yet.</p>
+{% endif %}
+{% endblock %}

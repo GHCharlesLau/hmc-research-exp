@@ -1,0 +1,21 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<h1>Configuration</h1>
+<p>Edit experiment settings below. Changes take effect immediately.</p>
+
+<form method="POST" action="/admin/config">
+    {% for key, description in config_keys.items() %}
+    <div class="form-group">
+        <label for="{{ key }}"><strong>{{ key }}</strong></label>
+        <p style="color: #666; font-size: 0.85rem; margin-bottom: 4px;">{{ description }}</p>
+        {% if key.startswith('CHARACTER_PROMPT') %}
+        <textarea id="{{ key }}" name="{{ key }}" rows="6" style="font-family: monospace;">{{ config_dict[key].value if config_dict[key] else '' }}</textarea>
+        {% else %}
+        <input type="text" id="{{ key }}" name="{{ key }}"
+               value="{{ config_dict[key].value if config_dict[key] else '' }}">
+        {% endif %}
+    </div>
+    {% endfor %}
+    <button type="submit" class="btn">Save Configuration</button>
+</form>
+{% endblock %}

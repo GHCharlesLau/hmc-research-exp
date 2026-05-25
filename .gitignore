@@ -1,0 +1,46 @@
+# Environment (contains API keys and secrets)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.pyc
+
+# Database
+pgdata/
+*.db
+*.sqlite
+
+# Redis
+dump.rdb
+
+# Claude Code (AI memory, plans, session data)
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Node (if any frontend tooling added later)
+node_modules/
+
+# Cookies / session files
+cookies.txt
+
+# Archive (old/unused code kept for reference)
+archive/

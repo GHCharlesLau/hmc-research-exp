@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "macros/likert.html" import likert_scale %}
+{% block content %}
+<h1>Questionnaire - Page 2 of 4</h1>
+<p>Please answer the following questions.</p>
+
+{% if error %}
+<div class="error-banner" style="background: #fee; border: 1px solid #fcc; padding: 10px; border-radius: 4px; margin-bottom: 16px; color: #c00;">{{ error }}</div>
+{% endif %}
+
+<form method="POST" action="/survey/b">
+    {# Q1: Attention Check — custom radio (3 options) #}
+    <h3>------------------------------------------------------------------</h3>
+    <div class="likert-group">
+        <div class="likert-question">1. Could you recall which partner you were told to speak with <span style="font-style: italic; font-weight: bold;">in the first round</span>?</div>
+        <div class="radio-group" style="margin-top: 8px;">
+            <label><input type="radio" name="manip_check" value="1" {{ 'checked' if form_data and form_data.get('manip_check') == 1 }} required> Another participant in this survey</label>
+            <label><input type="radio" name="manip_check" value="2" {{ 'checked' if form_data and form_data.get('manip_check') == 2 }}> An AI partner named MyBot</label>
+            <label><input type="radio" name="manip_check" value="3" {{ 'checked' if form_data and form_data.get('manip_check') == 3 }}> I don't know</label>
+        </div>
+    </div>
+
+    {# Q2: AI Usage — anchored 1-7 scale #}
+    <h3>------------------------------------------------------------------</h3>
+    <div class="likert-group">
+        <div class="likert-question">2. In the past month, how often did you use AI chatbots (e.g., ChatGPT, Claude) in your daily life?</div>
+        <div class="likert-options">
+            <span class="likert-anchor">Never</span>
+            {% for i in range(1, 8) %}
+            <label class="likert-option">
+                <input type="radio" name="ai_usage" value="{{ i }}" {{ 'checked' if form_data and form_data.get('ai_usage') == i }} required>
+                <span class="likert-label">{{ i }}</span>
+            </label>
+            {% endfor %}
+            <span class="likert-anchor">Very frequently</span>
+        </div>
+    </div>
+
+    {# Q3-6: AI Literacy — data-driven Likert scale #}
+    {% for scale in scales %}
+        {{ likert_scale(scale, 3, form_data) }}
+    {% endfor %}
+
+    <button type="submit" class="btn">Next Page</button>
+</form>
+{% endblock %}

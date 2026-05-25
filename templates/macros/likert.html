@@ -1,0 +1,64 @@
+{# Jinja2 macros for Likert scale rendering #}
+
+
+{% macro likert_question(field_name, question_num, text, min_val=1, max_val=7, low_anchor="", high_anchor="", form_data=none) %}
+<div class="likert-group">
+    <div class="likert-question">{{ question_num }}. {{ text }}</div>
+    <div class="likert-options">
+        <span class="likert-anchor">{{ low_anchor }}</span>
+        {% for i in range(min_val, max_val + 1) %}
+        <label class="likert-option">
+            <input type="radio" name="{{ field_name }}" value="{{ i }}"
+                {{ 'checked' if form_data and form_data.get(field_name) == i }}
+                required>
+            <span class="likert-label">{{ i }}</span>
+        </label>
+        {% endfor %}
+        <span class="likert-anchor">{{ high_anchor }}</span>
+    </div>
+</div>
+{% endmacro %}
+
+
+{% macro likert_scale(scale, start_num, form_data=none) %}
+{% if scale.display_title %}
+<h3>{{ scale.display_title }}</h3>
+{% endif %}
+{% if scale.description %}
+<p class="likert-desc">{{ scale.description }}</p>
+{% endif %}
+{% for item_text in scale.items %}
+{{ likert_question(
+    field_name=scale.field_names[loop.index0],
+    question_num=start_num + loop.index0,
+    text=item_text,
+    min_val=scale.min_val,
+    max_val=scale.max_val,
+    low_anchor=scale.low_anchor,
+    high_anchor=scale.high_anchor,
+    form_data=form_data
+) }}
+{% endfor %}
+{% endmacro %}
+
+
+{% macro likert_scale_local_numbering(scale, form_data=none) %}
+{% if scale.display_title %}
+<h3>{{ scale.display_title }}</h3>
+{% endif %}
+{% if scale.description %}
+<p class="likert-desc">{{ scale.description }}</p>
+{% endif %}
+{% for item_text in scale.items %}
+{{ likert_question(
+    field_name=scale.field_names[loop.index0],
+    question_num=loop.index,
+    text=item_text,
+    min_val=scale.min_val,
+    max_val=scale.max_val,
+    low_anchor=scale.low_anchor,
+    high_anchor=scale.high_anchor,
+    form_data=form_data
+) }}
+{% endfor %}
+{% endmacro %}

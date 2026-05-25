@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Warm-up Task</h1>
+
+{% if is_emotion %}
+<div style="font-size: 16px; line-height: 1.8;">
+    <p>Dear Participant,</p>
+
+    <img src="/static/avatar/img_sad.png" width="30%" style="display: block; margin: 12px auto;" />
+
+    <p><span style="color:red;">Have you recently encountered any worries or concerns?</span></p>
+
+    <p>Please take a moment to carefully reflect on any difficulties you have faced and describe them in detail in the text box below. The more detailed, the better (at least 10 words).</p>
+
+    <p>This question is meant to help you warm up. <span style="color:red;">Later, you'll complete the same task twice with two different conversation partners.</span></p>
+
+    <p>We assure you that your privacy will be fully protected, so there is no need to worry about confidentiality.</p>
+</div>
+{% else %}
+<div style="font-size: 16px; line-height: 1.8;">
+    <p>Dear Participant,</p>
+
+    <img src="/static/avatar/img_box.jpg" width="30%" style="display: block; margin: 12px auto;" />
+
+    <p><span style="color:red;">Could you come up with three unique uses for a cardboard box?</span></p>
+
+    <p>Kindly list them in the text box below.</p>
+
+    <p>This question is meant to help you warm up. <span style="color:red;">Later, you'll complete the same task twice with two different conversation partners.</span></p>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<form method="POST" action="/priming">
+    <div class="form-group">
+        <label for="priming_text">Your response:</label>
+        <textarea id="priming_text" name="priming_text" rows="5" required placeholder="Write your response here...">{{ priming_text or '' }}</textarea>
+        <div class="word-counter" id="word-counter" style="text-align: right; color: #666; font-size: 0.85rem; margin-top: 4px;">0 words (minimum: 10)</div>
+    </div>
+    <button type="submit" class="btn">Continue</button>
+</form>
+
+<script>
+// Live word counter
+const textarea = document.getElementById('priming_text');
+const counter = document.getElementById('word-counter');
+if (textarea && counter) {
+    textarea.addEventListener('input', function() {
+        const text = this.value.trim();
+        const count = text ? text.split(/\s+/).length : 0;
+        counter.textContent = count + ' words (minimum: 10)';
+        counter.style.color = count >= 10 ? '#4CAF50' : '#666';
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Partner Found!</h1>
+
+{# BUG-D1 FIX: R1 fallback (hhc_fallback) does NOT expose fallback —
+   shows same UI as normal HMC based on partner_label.
+   Only R2 fallback (force_chatbot) reveals the "Since nobody..." message. #}
+
+{% if force_chatbot %}
+    <p style="color: #e65100;">Since nobody has joined yet, you are paired with an AI chatbot for this conversation.</p>
+{% else %}
+    <p>You have been paired with your conversation partner.</p>
+{% endif %}
+
+<div class="instruction-partner">
+    {% if force_chatbot %}
+        {# R2 fallback: always show MyBot, regardless of partner_label #}
+        <img src="/static/avatar/myBot.png" alt="MyBot">
+        <div>
+            <strong>Your partner:</strong> MyBot
+            (AI Chatbot)
+        </div>
+    {% elif p.partner_label == "chatbot" %}
+        {# chatbot label (HMC or R1 fallback): show MyBot identity #}
+        <img src="/static/avatar/{{ p.chatbot_avatar }}" alt="{{ p.chatbot_identity }}">
+        <div>
+            <strong>Your partner:</strong> {{ p.chatbot_identity }}
+            (AI Chatbot)
+        </div>
+    {% else %}
+        {# human label (HMC or R1 fallback): show Tommy identity, maintain deception #}
+        <img src="/static/avatar/{{ p.chatbot_avatar }}" alt="{{ p.chatbot_identity }}">
+        <div>
+            <strong>Your partner:</strong> {{ p.chatbot_identity }}
+        </div>
+    {% endif %}
+</div>
+
+<p>Round {{ round_number }} will begin shortly. Please click the button below to start.</p>
+
+<form method="POST" action="/pairing">
+    <button type="submit" class="btn">Start Conversation</button>
+</form>
+{% endblock %}

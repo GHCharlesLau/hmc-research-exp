@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Questionnaire</h1>
+<p>Thank you for completing the conversation rounds! Now we have a few questions about your experience.</p>
+<p>The questionnaire has 4 pages and will take approximately 5 minutes to complete.</p>
+<p>Your responses are confidential and will only be used for research purposes.</p>
+
+<form method="POST" action="/survey/prompt">
+    <button type="submit" class="btn">Continue to Questionnaire</button>
+</form>
+{% endblock %}

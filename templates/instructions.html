@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+{% set is_round1 = variant == "r1" %}
+{% set is_emotion = p.task_type == "emotionTask" %}
+{% set is_chatbot = p.partner_label == "chatbot" %}
+
+<h1>{{ "Round 1" if is_round1 else "Round 2" }} Instructions</h1>
+
+{% if is_round1 %}
+    {# Round 1: 4 variants (taskType x partnerLabel) #}
+
+    {% if is_emotion and is_chatbot %}
+        <p>In this round, you will have a conversation with <strong>an AI chatbot named {{ p.chatbot_identity }}</strong> about emotions and personal experiences.</p>
+        <p>The conversation will last approximately 5-10 minutes. Please be open and share your thoughts freely.</p>
+
+        <p><strong>Your partner:</strong> {{ p.chatbot_identity }} (AI Chatbot)</p>
+
+    {% elif is_emotion and not is_chatbot %}
+        <p>In this round, you will have a conversation with <strong>another participant</strong> about emotions and personal experiences.</p>
+        <p>The conversation will last approximately 5-10 minutes. Please be open and share your thoughts freely.</p>
+
+    {% elif not is_emotion and is_chatbot %}
+        <p>In this round, you will have a conversation with <strong>an AI chatbot named {{ p.chatbot_identity }}</strong> about a practical task.</p>
+        <p>The conversation will last approximately 5-10 minutes. Please work together to complete the task.</p>
+
+        <p><strong>Your partner:</strong> {{ p.chatbot_identity }} (AI Chatbot)</p>
+
+    {% elif not is_emotion and not is_chatbot %}
+        <p>In this round, you will have a conversation with <strong>another participant</strong> about a practical task.</p>
+        <p>The conversation will last approximately 5-10 minutes. Please work together to complete the task.</p>
+    {% endif %}
+
+{% else %}
+    {# Round 2: 2 variants (taskType only) #}
+
+    {% if is_emotion %}
+        <p>In this round, you will have a conversation with <strong>another participant</strong> about emotions and personal experiences.</p>
+    {% else %}
+        <p>In this round, you will have a conversation with <strong>another participant</strong> about a practical task.</p>
+    {% endif %}
+    <p>The conversation will last approximately 5-10 minutes.</p>
+{% endif %}
+
+<h3>Chat Rules</h3>
+<ul style="margin-left: 20px; margin-bottom: 16px;">
+    <li>You must exchange at least <strong>{{ min_turns }} messages</strong> before you can end the chat.</li>
+    <li>The chat will automatically end after <strong>{{ max_turns }} messages</strong> or <strong>{{ max_duration_minutes }} minutes</strong>.</li>
+    <li>Please be respectful and engage actively in the conversation.</li>
+</ul>
+
+<form method="POST" action="/instructions">
+    <button type="submit" class="btn">I Understand - Start Chat</button>
+</form>
+{% endblock %}
