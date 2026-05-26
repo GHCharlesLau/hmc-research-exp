@@ -1,9 +1,12 @@
 services:
   - type: web
+    plan: free
     name: conexperiment
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: bash start.sh
+    preDeployCommand: alembic upgrade head
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"
@@ -13,7 +16,7 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: conexperiment-redis
           property: connectionString
       - key: SECRET_KEY
@@ -46,12 +49,14 @@ services:
       - key: DEMO_MODE
         value: "false"
 
-  - type: pserv
-    name: conexperiment-db
-    runtime: postgres
-    plan: starter
-
-  - type: redis
+  - type: keyvalue
     name: conexperiment-redis
-    plan: starter
-    ipAllowList: []
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow all connections
+
+databases:
+  - name: conexperiment-db
+    plan: free
