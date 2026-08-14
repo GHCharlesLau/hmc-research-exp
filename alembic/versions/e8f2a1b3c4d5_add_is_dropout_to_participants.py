@@ -18,8 +18,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('participants', sa.Column('is_dropout', sa.Boolean(), nullable=False, server_default='false'))
+    op.execute(sa.text(
+        "ALTER TABLE participants ADD COLUMN IF NOT EXISTS "
+        "is_dropout BOOLEAN NOT NULL DEFAULT false"
+    ))
 
 
 def downgrade() -> None:
-    op.drop_column('participants', 'is_dropout')
+    op.execute(sa.text(
+        "ALTER TABLE participants DROP COLUMN IF EXISTS is_dropout"
+    ))

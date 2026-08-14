@@ -21,10 +21,14 @@ config = context.config
 # Convert to asyncpg driver for async migrations.
 db_url = os.environ.get("DATABASE_URL", "")
 if db_url:
+    if db_url.startswith("postgres://"):
+        db_url = "postgresql://" + db_url[len("postgres://"):]
     # Strip existing driver prefix if any
     if db_url.startswith("postgresql+"):
         db_url = "postgresql://" + db_url.split("://", 1)[1]
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    db_url = db_url.replace("sslmode=require", "ssl=require")
+    db_url = db_url.replace("sslmode=preferred", "ssl=prefer")
     config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:

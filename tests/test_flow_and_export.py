@@ -56,6 +56,16 @@ def test_convert_db_url_adds_driver():
     assert _convert_db_url(already, "asyncpg").startswith("postgresql+asyncpg://")
 
 
+def test_convert_db_url_accepts_postgres_scheme_and_sslmode():
+    url = _convert_db_url(
+        "postgres://user:pass@host/db?sslmode=require",
+        "asyncpg",
+    )
+    assert url.startswith("postgresql+asyncpg://")
+    assert "ssl=require" in url
+    assert "sslmode=" not in url
+
+
 def test_signed_participant_cookie_roundtrip():
     pid = "11111111-1111-1111-1111-111111111111"
     signed = sign_participant_id(pid)

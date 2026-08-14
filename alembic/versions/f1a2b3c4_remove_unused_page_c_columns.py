@@ -53,9 +53,11 @@ DROP_COLUMNS = [
 
 def upgrade() -> None:
     for col in DROP_COLUMNS:
-        op.drop_column("survey_responses", col)
+        op.execute(sa.text(f"ALTER TABLE survey_responses DROP COLUMN IF EXISTS {col}"))
 
 
 def downgrade() -> None:
     for col in DROP_COLUMNS:
-        op.add_column("survey_responses", sa.Column(col, sa.Integer(), nullable=True))
+        op.execute(sa.text(
+            f"ALTER TABLE survey_responses ADD COLUMN IF NOT EXISTS {col} INTEGER"
+        ))

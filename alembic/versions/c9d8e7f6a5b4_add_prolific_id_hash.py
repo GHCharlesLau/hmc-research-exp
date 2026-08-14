@@ -18,10 +18,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("participants", sa.Column("prolific_id_hash", sa.String(length=64), nullable=True))
-    op.create_index(op.f("ix_participants_prolific_id_hash"), "participants", ["prolific_id_hash"], unique=True)
+    op.execute(sa.text(
+        "ALTER TABLE participants ADD COLUMN IF NOT EXISTS "
+        "prolific_id_hash VARCHAR(64)"
+    ))
+    op.execute(sa.text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_participants_prolific_id_hash "
+        "ON participants (prolific_id_hash)"
+    ))
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_participants_prolific_id_hash"), table_name="participants")
-    op.drop_column("participants", "prolific_id_hash")
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_participants_prolific_id_hash"))
+    op.execute(sa.text("ALTER TABLE participants DROP COLUMN IF EXISTS prolific_id_hash"))

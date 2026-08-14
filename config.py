@@ -6,16 +6,23 @@ from functools import lru_cache
 def _convert_db_url(url: str, driver: str) -> str:
     """Convert a postgresql:// URL to use the specified async/sync driver.
 
-    Render provides ``postgresql://user:pass@host:port/db``.
+    Render provides ``postgresql://user:pass@host/db`` (sometimes ``postgres://``).
     We need ``postgresql+asyncpg://`` for async and ``postgresql+psycopg2://`` for sync (Alembic).
     """
     if not url:
         return url
+    # Render / Heroku sometimes emit postgres:// instead of postgresql://
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
     # Replace any existing postgresql+driver:// prefix with plain postgresql:// first
     if url.startswith("postgresql+"):
         url = "postgresql://" + url.split("://", 1)[1]
-    # Now add the requested driver
-    return url.replace("postgresql://", f"postgresql+{driver}://", 1)
+    url = url.replace("postgresql://", f"postgresql+{driver}://", 1)
+    # asyncpg does not accept libpq's sslmode=; Render URLs often include it.
+    if driver == "asyncpg":
+        url = url.replace("sslmode=require", "ssl=require")
+        url = url.replace("sslmode=preferred", "ssl=prefer")
+    return url
 
 
 class Settings(BaseSettings):
