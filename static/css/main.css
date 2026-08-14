@@ -224,9 +224,9 @@ textarea {
 
 .likert-desc {
     color: #666;
-    font-size: 0.9rem;
+    font-size: 1rem;
     margin-bottom: 12px;
-    line-height: 1.4;
+    line-height: 1.5;
 }
 
 .likert-options {

@@ -24,7 +24,7 @@ function waitingRoom() {
         async init() {
             // Use server-side template variable instead of reading HttpOnly cookie
             // (HttpOnly cookies are inaccessible to JavaScript)
-            const participantId = '{{ p.id }}';
+            const participantId = {{ p.id | tojson }};
 
             const roundNumber = {{ round_number }};
             const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';

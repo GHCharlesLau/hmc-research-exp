@@ -30,13 +30,15 @@
             <th>Progress</th>
             <th>Status</th>
             <th>Created</th>
+            <th>Duration (m)</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
-        {% set step_order = ['consent', 'welcome', 'priming', 'instructions_r1', 'chat_r1', 'instructions_r2', 'chat_r2', 'survey_prompt', 'survey_a', 'survey_b', 'demographics', 'payment'] %}
         {% for p in participants %}
-        {% set progress = ((step_order.index(p.current_step.value) / 11) * 100)|round(0)|int %}
+        {% set current_step = p.current_step.value %}
+        {% set step_index = step_order.index(current_step) if current_step in step_order else 0 %}
+        {% set progress = ((step_index / (step_order|length - 1)) * 100)|round(0)|int %}
         {% set bar_color = '#4CAF50' if progress > 80 else ('#ff9800' if progress > 40 else '#2196F3') %}
         <tr>
             <td><strong>{{ p.display_id }}</strong></td>
@@ -62,6 +64,7 @@
                 {% endif %}
             </td>
             <td style="font-size: 0.8rem; color: #666;">{{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '' }}</td>
+            <td style="font-size: 0.8rem; color: #666;">{{ ((now - p.created_at).total_seconds() / 60)|round(1) if p.created_at else '' }}</td>
             <td><a href="/admin/participant/{{ p.display_id }}" class="view-link">View</a></td>
         </tr>
         {% endfor %}

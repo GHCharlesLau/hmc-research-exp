@@ -51,6 +51,7 @@ app.include_router(ws.router)
 # Error handlers
 app.add_exception_handler(404, not_found_handler := errors.not_found_handler)
 app.add_exception_handler(500, server_error_handler := errors.server_error_handler)
+app.add_exception_handler(Exception, errors.unhandled_error_handler)
 
 
 @app.get("/health")

@@ -23,6 +23,7 @@ STEP_TIME_LIMITS: dict[str, int] = {
     "survey_prompt": 60,
     "survey_a": 300,
     "survey_b": 300,
+    "survey_c": 600,
     "demographics": 300,
     "payment": 120,
 }
@@ -129,6 +130,8 @@ async def detect_stuck_participants(db: AsyncSession) -> list[dict]:
 
         elapsed = (now - entered_at).total_seconds()
         if elapsed > limit:
+            if not p.is_timeout:
+                p.is_timeout = True
             stuck.append({
                 "display_id": p.display_id,
                 "step": step,
@@ -136,4 +139,6 @@ async def detect_stuck_participants(db: AsyncSession) -> list[dict]:
                 "limit_seconds": limit,
                 "over_by_seconds": round(elapsed - limit),
             })
+    if any(item for item in stuck):
+        await db.commit()
     return stuck

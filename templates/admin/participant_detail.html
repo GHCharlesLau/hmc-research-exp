@@ -58,6 +58,7 @@
             {% if p.is_test %}<span class="badge badge-gray">Test</span>{% endif %}
             {% if p.is_finished %}<span class="badge badge-green">Finished</span>{% endif %}
             {% if p.is_timeout %}<span class="badge badge-red">Timeout</span>{% endif %}
+            {% if p.is_dropout %}<span class="badge badge-red">Dropout</span>{% endif %}
             {% if p.hhc_fallback %}<span class="badge badge-orange">HHC Fallback</span>{% endif %}
         </div>
     </div>
@@ -100,7 +101,7 @@
         <div class="info-row"><span class="label">Nickname</span><span class="value">{{ p.nickname or '-' }}</span></div>
         <div class="info-row"><span class="label">Avatar</span><span class="value">{{ p.avatar or '-' }}</span></div>
         <div class="info-row"><span class="label">Test</span><span class="value">{{ 'Yes' if p.is_test else 'No' }}</span></div>
-        <div class="info-row"><span class="label">Entry URL</span><span class="value"><a href="/experiment/{{ p.id }}" target="_blank" style="font-size: 0.8rem;">Open</a></span></div>
+        <div class="info-row"><span class="label">Entry URL</span><span class="value"><a href="/experiment/{{ p.id | string }}" target="_blank" style="font-size: 0.8rem;">Open</a></span></div>
     </div>
     <div class="info-card">
         <h3>Conditions</h3>
@@ -109,6 +110,7 @@
         <div class="info-row"><span class="label">Partner Label</span><span class="value">{{ p.partner_label.value }}</span></div>
         <div class="info-row"><span class="label">HHC Fallback</span><span class="value">{{ 'Yes' if p.hhc_fallback else 'No' }}</span></div>
         <div class="info-row"><span class="label">Finished</span><span class="value">{{ 'Yes' if p.is_finished else 'No' }}</span></div>
+        <div class="info-row"><span class="label">Dropout</span><span class="value">{{ 'Yes' if p.is_dropout else 'No' }}</span></div>
     </div>
 </div>
 
@@ -227,3 +229,4 @@ async function loadChatMessages(roomUuid) {
 }
 </script>
 {% endblock %}
+

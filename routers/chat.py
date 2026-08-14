@@ -13,45 +13,51 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database import get_db
-from models.participant import Participant, Step, Partnership, PartnerLabel
+from models.participant import Participant, Step
 from models.chat import ChatRoom, ChatMessage, RoomType, SenderRole
-from models.experiment import ExperimentSession
 from services import llm, matchmaking
-from services.monitoring import log_event, log_step_entry
-from config import get_settings
-from routers.experiment import _get_participant, _redirect, _participant_to_dict, _advance_step
+from services.chat_context import (
+    can_skip_min_turns,
+    get_active_room,
+    get_shared_turns,
+    is_force_chatbot,
+    mark_chat_exit_eligible,
+    partner_display_assets,
+    remaining_chat_seconds,
+)
+from services.chat_settings import get_chat_limits
+from services.monitoring import log_event
+from services.auth import verify_ws_participant
+from dependencies.participant import (
+    get_participant,
+    redirect_to_step,
+    participant_to_dict,
+    advance_step,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
 
-def _effective_max_turns() -> int:
-    """Return max_turns based on demo mode."""
-    return settings.DEMO_MAX_TURNS if settings.DEMO_MODE else settings.MAX_TURNS
-
-
-# ── Pairing Confirmed (HMC only) ──────────────────────────
+# -- Pairing Confirmed (HMC only) --------------------------
 
 @router.get("/pairing", response_class=HTMLResponse)
 async def pairing_page(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
     # Only for HMC participants heading to chat
     if participant.current_step not in (Step.chat_r1, Step.chat_r2):
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
-    p = _participant_to_dict(participant)
+    p = participant_to_dict(participant)
 
-    # Check for forced chatbot identity (Round 2 fallback)
-    force_chatbot = False
-    if participant.current_round == 2:
-        r = await matchmaking.get_redis()
-        force_chatbot = await r.get(f"force_chatbot:{participant.id}") is not None
-        if force_chatbot:
-            logger.info(f"Participant {participant.id}: forcing chatbot identity for round 2 fallback")
+    # Forced chatbot identity in R2 = participant has no real partner (timeout
+    # fallback or HMC carryover). Derived from durable participant state.
+    force_chatbot = is_force_chatbot(participant)
+    if force_chatbot:
+        logger.info(f"Participant {participant.id}: forcing chatbot identity for round 2 fallback")
 
     return request.app.state.templates.TemplateResponse("pairing_confirmed.html", {
         "request": request,
@@ -63,23 +69,14 @@ async def pairing_page(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.post("/pairing")
 async def pairing_submit(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
     round_number = participant.current_round
 
     # BUG-D2 FIX: Reuse existing active room instead of creating a duplicate.
-    # Can happen when admin set-step already created a room, then user
-    # navigates through pairing_confirmed → POST /pairing.
-    existing = await db.execute(
-        select(ChatRoom).where(
-            ChatRoom.participant_id == participant.id,
-            ChatRoom.round_number == round_number,
-            ChatRoom.is_active == True,
-        )
-    )
-    room = existing.scalar_one_or_none()
+    room = await get_active_room(db, participant.id, round_number)
     if not room:
         room = ChatRoom(
             participant_id=participant.id,
@@ -95,22 +92,22 @@ async def pairing_submit(request: Request, db: AsyncSession = Depends(get_db)):
     return RedirectResponse(url=f"/chat?room={room.id}", status_code=303)
 
 
-# ── Waiting Room (HHC only) ───────────────────────────────
+# -- Waiting Room (HHC only) -------------------------------
 
 @router.get("/waiting", response_class=HTMLResponse)
 async def waiting_page(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
     if participant.current_step not in (Step.chat_r1, Step.chat_r2):
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
     # BUG-01 FIX: Allow all participants (HMC and HHC) to access waiting room
-    # HMC participants will use WebSocket fake waiting room logic (ws.py:52-83)
+    # HMC participants will use WebSocket fake waiting room logic (ws.py)
     # HHC participants will use real matchmaking logic
 
-    p = _participant_to_dict(participant)
+    p = participant_to_dict(participant)
     round_number = participant.current_round
 
     return request.app.state.templates.TemplateResponse("waiting.html", {
@@ -120,33 +117,24 @@ async def waiting_page(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
-# ── Chat Page ──────────────────────────────────────────────
+# -- Chat Page ----------------------------------------------
 
 @router.get("/chat", response_class=HTMLResponse)
 async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
     if participant.current_step not in (Step.chat_r1, Step.chat_r2):
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
     room_id = request.query_params.get("room")
 
     # BUG-02 FIX: If no room param, look up active room from DB
-    # This prevents redirect loops when _redirect() cannot find a room either
     if not room_id:
-        result = await db.execute(
-            select(ChatRoom).where(
-                ChatRoom.participant_id == participant.id,
-                ChatRoom.round_number == participant.current_round,
-                ChatRoom.is_active == True,
-            )
-        )
-        room = result.scalar_one_or_none()
+        room = await get_active_room(db, participant.id, participant.current_round)
         if room:
             return RedirectResponse(url=f"/chat?room={room.id}", status_code=303)
-        # No active room exists — redirect to waiting room to trigger pairing/room creation
         return RedirectResponse(url="/waiting", status_code=303)
 
     # Verify room belongs to this participant
@@ -157,7 +145,7 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
     if not room or not room.is_active:
         return RedirectResponse(url="/instructions", status_code=303)
 
-    p = _participant_to_dict(participant)
+    p = participant_to_dict(participant)
 
     # Load message history
     messages = []
@@ -169,22 +157,8 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
             "msg_id": str(msg.id),
         })
 
-    # Calculate initial shared turns for both HMC and HHC
-    if room.room_type == RoomType.HMC:
-        # HMC: 1 exchange = 2 messages (user + partner), room.turn_count tracks all messages
-        initial_shared_turns = room.turn_count // 2
-    else:
-        # HHC: 1 turn = each participant sends at least 1 message.
-        # Use per-participant Redis counters for accuracy.
-        my_msgs = await matchmaking.get_hhc_peer_msg_count(room.room_id, str(participant.id))
-        partner_msgs = await matchmaking.get_hhc_peer_msg_count(room.room_id, str(participant.partner_id)) if participant.partner_id else 0
-        initial_shared_turns = min(my_msgs, partner_msgs)
-
-    # Check for forced chatbot identity (Round 2 fallback)
-    force_chatbot = False
-    if participant.current_round == 2:
-        r = await matchmaking.get_redis()
-        force_chatbot = await r.get(f"force_chatbot:{participant.id}") is not None
+    initial_shared_turns = await get_shared_turns(room, participant)
+    force_chatbot = is_force_chatbot(participant, room)
 
     # BUG-D8 FIX: For HHC rooms, fetch real partner info for avatar/name display.
     # Previously used partner_label which shows bot avatar for HHC real matches.
@@ -197,14 +171,31 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
                 "nickname": partner_obj.nickname or partner_obj.display_id,
             }
 
-    # BUG-D7 FIX: Calculate remaining time based on room start time.
-    # Without this, page refresh resets the countdown to full max_duration,
-    # allowing users to extend chat indefinitely by refreshing.
-    max_duration = settings.DEMO_MAX_DURATION if settings.DEMO_MODE else settings.MAX_DURATION
-    time_remaining = max_duration
-    if room.started_at:
-        elapsed = (datetime.now(timezone.utc) - room.started_at).total_seconds()
-        time_remaining = max(0, int(max_duration - elapsed))
+    limits = get_chat_limits()
+    time_remaining = remaining_chat_seconds(room)
+    show_retry_dialog = time_remaining <= 0 and initial_shared_turns < limits.min_turns
+    if show_retry_dialog:
+        await mark_chat_exit_eligible(participant.id, room.round_number)
+
+    partner_avatar, partner_name = partner_display_assets(
+        force_chatbot=force_chatbot,
+        is_r1=room.round_number == 1,
+        partner_info=partner_info,
+        partner_label=p["partner_label"],
+    )
+    chat_config = {
+        "messages": messages,
+        "initialSharedTurns": initial_shared_turns,
+        "minTurns": limits.min_turns,
+        "maxTurns": limits.max_turns,
+        "timeRemaining": time_remaining,
+        "showRetryDialog": show_retry_dialog,
+        "roomId": str(room.id),
+        "userAvatar": f"/static/avatar/{p['avatar'] or 'lion.png'}",
+        "userName": p["nickname"] or "",
+        "partnerAvatar": partner_avatar,
+        "partnerName": partner_name,
+    }
 
     return request.app.state.templates.TemplateResponse("chat.html", {
         "request": request,
@@ -218,60 +209,52 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
         },
         "messages": json.dumps(messages),
         "initial_shared_turns": initial_shared_turns,
-        "min_turns": settings.DEMO_MIN_TURNS if settings.DEMO_MODE else settings.MIN_TURNS,
-        "max_turns": settings.DEMO_MAX_TURNS if settings.DEMO_MODE else settings.MAX_TURNS,
-        "max_duration": time_remaining,  # Now sends remaining time, not total
+        "min_turns": limits.min_turns,
+        "max_turns": limits.max_turns,
+        "max_duration": time_remaining,
         "force_chatbot": force_chatbot,
-        "partner_info": partner_info,  # Real partner info for HHC rooms
+        "partner_info": partner_info,
+        "show_retry_dialog": show_retry_dialog,
+        "chat_config": chat_config,
     })
 
 
-# ── End Chat (HTTP) ───────────────────────────────────────
+# -- End Chat (HTTP) ---------------------------------------
 
 @router.post("/chat/end")
 async def end_chat(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
-    # BUG-17 FIX: partner_left flag allows skipping min_turns check
-    # BUG-C1 FIX: timeout also allows skipping min_turns (user can't send more, no point blocking)
     partner_left = request.query_params.get("partner_left") == "1"
     is_timeout = request.query_params.get("timeout") == "1"
-    skip_min_turns = partner_left or is_timeout
+    is_retry = request.query_params.get("retry") == "1"
+    is_dropout = request.query_params.get("dropout") == "1"
+    shared_turns_at_exit = 0
+    skip_min_turns = False
 
     try:
-        # Find active room for current round
-        result = await db.execute(
-            select(ChatRoom).where(
-                ChatRoom.participant_id == participant.id,
-                ChatRoom.round_number == participant.current_round,
-                ChatRoom.is_active == True,
-            )
-        )
-        room = result.scalar_one_or_none()
+        room = await get_active_room(db, participant.id, participant.current_round)
         if room:
-            # Server-side min_turns check (skip if partner already left or timeout)
+            skip_min_turns = await can_skip_min_turns(
+                room,
+                participant,
+                partner_left=partner_left,
+                is_timeout=is_timeout,
+                is_retry=is_retry,
+                is_dropout=is_dropout,
+            )
+            if not skip_min_turns and (is_retry or is_dropout):
+                return RedirectResponse(url=f"/chat?room={room.id}", status_code=303)
             if not skip_min_turns:
-                effective_min = settings.DEMO_MIN_TURNS if settings.DEMO_MODE else settings.MIN_TURNS
-                if room.room_type == RoomType.HMC:
-                    min_msg_count = effective_min * 2  # user + partner messages
-                    actual_msg_count = room.turn_count
-                    if actual_msg_count < min_msg_count:
-                        return RedirectResponse(url=f"/chat?room={room.id}", status_code=303)
-                else:
-                    # BUG-H4 FIX: HHC min_turns should count exchanges (shared turns),
-                    # not total messages. Use Redis shared counter for accuracy.
-                    actual_exchanges = 0
-                    try:
-                        my_msgs = await matchmaking.get_hhc_peer_msg_count(room.room_id, str(participant.id))
-                        partner_msgs = await matchmaking.get_hhc_peer_msg_count(room.room_id, str(participant.partner_id)) if participant.partner_id else 0
-                        actual_exchanges = min(my_msgs, partner_msgs)
-                    except Exception:
-                        # Fallback: count total messages and divide by 2
-                        actual_exchanges = len(room.messages) // 2
-                    if actual_exchanges < effective_min:
-                        return RedirectResponse(url=f"/chat?room={room.id}", status_code=303)
+                limits = get_chat_limits()
+                actual_exchanges = await get_shared_turns(room, participant)
+                shared_turns_at_exit = actual_exchanges
+                if actual_exchanges < limits.min_turns:
+                    return RedirectResponse(url=f"/chat?room={room.id}", status_code=303)
+            else:
+                shared_turns_at_exit = await get_shared_turns(room, participant)
             room.is_active = False
             room.ended_at = datetime.now(timezone.utc)
             if room.started_at:
@@ -287,55 +270,97 @@ async def end_chat(request: Request, db: AsyncSession = Depends(get_db)):
             })
 
             # BUG-17 FIX: For HHC rooms, notify partner that this participant left
-            if room.room_type == RoomType.HHC and room.room_id:
+            if room.room_type == RoomType.HHC and room.room_id and participant.partner_id:
                 try:
-                    await matchmaking.publish_chat_message(room.room_id, {
-                        "type": "partner_left",
-                        "sender_id": str(participant.id),
-                        "sender_name": participant.nickname or participant.display_id,
-                    })
-                    logger.info(f"Published partner_left for {participant.display_id} in room {room.room_id}")
+                    r = await matchmaking.get_redis()
+                    partner_ws = await r.get(f"hhc_ws:{participant.partner_id}")
+                    if partner_ws:
+                        await matchmaking.publish_chat_message(room.room_id, {
+                            "type": "partner_left",
+                            "sender_id": str(participant.id),
+                            "sender_name": participant.nickname or participant.display_id,
+                        })
+                        logger.info(f"Published partner_left for {participant.display_id} in room {room.room_id}")
+                    else:
+                        logger.info(f"Skipped partner_left for {participant.display_id}: partner {participant.partner_id} not connected")
                 except Exception as pub_err:
                     logger.error(f"Failed to publish partner_left: {pub_err}")
 
-        # Advance step — BUG-C4 FIX: only advance if still at a chat step
-        # Prevents double-advance when two HHC participants both POST /chat/end
-        if participant.current_step in (Step.chat_r1, Step.chat_r2):
-            if participant.current_round == 1:
-                await _advance_step(participant, Step.instructions_r2, db, round_number=2)
-                return RedirectResponse(url="/instructions", status_code=303)
-            else:
-                await _advance_step(participant, Step.survey_prompt, db)
-                return RedirectResponse(url="/survey/prompt", status_code=303)
-        else:
-            # Already advanced (e.g., by a concurrent POST) — just redirect
-            return await _redirect(participant, db)
-
     except Exception as e:
         logger.error(f"end_chat error for participant {participant.id}: {e}", exc_info=True)
-        # BUG-10 FIX: On error, still try to advance step so user isn't stuck
+        # On error, still try to deactivate room and notify partner
+        # but do NOT auto-advance step — let the retry/dropout logic below handle it
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    # -- Retry / Dropout / Normal advancement (outside try/except) --
+    # These must be OUTSIDE the try block so that exceptions in room
+    # deactivation (Redis down, log failure, etc.) don't skip the
+    # participant's explicit choice.
+
+    if is_dropout:
+        participant.is_dropout = True
+        try:
+            await db.commit()
+        except Exception:
+            pass
+        try:
+            await log_event(db, participant.id, "dropout", participant.current_step.value, {
+                "round_number": participant.current_round,
+                "shared_turns_at_dropout": shared_turns_at_exit,
+            })
+        except Exception:
+            pass
+        return request.app.state.templates.TemplateResponse("end_no_consent.html", {
+            "request": request,
+            "is_dropout": True,
+        })
+
+    if is_retry:
         try:
             if participant.current_round == 1:
-                await _advance_step(participant, Step.instructions_r2, db)
+                await advance_step(participant, Step.instructions_r1, db, round_number=1)
             else:
-                await _advance_step(participant, Step.survey_prompt, db)
+                await advance_step(participant, Step.instructions_r2, db, round_number=2)
+            await log_event(db, participant.id, "chat_retry", participant.current_step.value, {
+                "round_number": participant.current_round,
+            })
+        except Exception as e:
+            logger.error(f"chat_retry error: {e}", exc_info=True)
+        return RedirectResponse(url="/instructions", status_code=303)
+
+    # BUG-C4 FIX: only advance if still at a chat step
+    if participant.current_step in (Step.chat_r1, Step.chat_r2):
+        if participant.current_round == 1:
+            await advance_step(participant, Step.instructions_r2, db, round_number=2)
             return RedirectResponse(url="/instructions", status_code=303)
-        except Exception:
-            return RedirectResponse(url="/", status_code=303)
+        else:
+            await advance_step(participant, Step.survey_prompt, db)
+            return RedirectResponse(url="/survey/prompt", status_code=303)
+    else:
+        # Already advanced (e.g., by a concurrent POST) — just redirect
+        return await redirect_to_step(participant, db)
 
 
-# ── WebSocket Chat ────────────────────────────────────────
+# -- WebSocket Chat ----------------------------------------
 
 @router.websocket("/ws/chat/{room_uuid}")
 async def chat_websocket(websocket: WebSocket, room_uuid: str):
-    from fastapi import Depends
     from database import AsyncSessionLocal
 
     await websocket.accept()
 
     db = AsyncSessionLocal()
     try:
-        room = await db.get(ChatRoom, uuid.UUID(room_uuid))
+        try:
+            room_id = uuid.UUID(room_uuid)
+        except ValueError:
+            await websocket.close(code=4004, reason="Invalid room")
+            return
+
+        room = await db.get(ChatRoom, room_id)
         if not room or not room.is_active:
             await websocket.close(code=4004, reason="Room not found or inactive")
             return
@@ -343,6 +368,9 @@ async def chat_websocket(websocket: WebSocket, room_uuid: str):
         participant = await db.get(Participant, room.participant_id)
         if not participant:
             await websocket.close(code=4004, reason="Participant not found")
+            return
+
+        if not await verify_ws_participant(websocket, participant.id):
             return
 
         # BUG-D9 FIX: Set started_at when WebSocket connects, not when room is created.
@@ -377,6 +405,17 @@ async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant
     for msg in room.messages:
         role = "user" if msg.sender_role == SenderRole.user else "assistant"
         chat_history.append({"role": role, "content": msg.text})
+
+    # Fetch R1 chat context for injection (only applicable in R2 with chatbot label)
+    r1_context: str | None = None
+    if participant.current_round == 2 and participant.partner_label.value == "chatbot":
+        try:
+            r1_context = await llm.get_r1_chat_context(db, participant.id, participant.partner_label.value)
+            if r1_context:
+                logger.info(f"R1 context loaded for {participant.display_id} ({len(r1_context)} chars)")
+        except Exception as e:
+            logger.error(f"Failed to load R1 context for {participant.display_id}: {e}", exc_info=True)
+            r1_context = None
 
     while True:
         try:
@@ -418,22 +457,24 @@ async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                 })
 
                 # Call LLM (skip if max turns reached)
-                max_turns = _effective_max_turns()
+                max_turns = get_chat_limits().max_turns
                 if exchange_count < max_turns:
-                    # Check for forced chatbot identity (Round 2 fallback)
+                    # In R2, an HMC chat means the deception is over — force
+                    # the chatbot prompt (CHARACTER_PROMPT_A/B), never Tommy.
+                    # We are already inside _handle_hmc_chat, so room is HMC
+                    # by construction; the round check alone is sufficient.
                     effective_partner_label = participant.partner_label.value
                     if participant.current_round == 2:
-                        r = await matchmaking.get_redis()
-                        force_chatbot = await r.get(f"force_chatbot:{participant.id}") is not None
-                        if force_chatbot:
-                            effective_partner_label = "chatbot"
-                            logger.info(f"Round 2 fallback: forcing chatbot prompt for {participant.id}")
+                        effective_partner_label = "chatbot"
+                        logger.info(f"Round 2 HMC: forcing chatbot prompt for {participant.id}")
 
                     llm_response = await llm.call_llm(
                         db,
                         participant.task_type.value,
                         effective_partner_label,
                         chat_history,
+                        r1_context=r1_context,
+                        round_number=participant.current_round,
                     )
 
                     # Log LLM call event
@@ -445,6 +486,7 @@ async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                         "task_type": participant.task_type.value,
                         "partner_label": effective_partner_label,
                         "turn_number": current_turn,
+                        "r1_context_injected": r1_context is not None,
                     })
 
                     room.turn_count += 1
@@ -598,8 +640,13 @@ async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                             continue
 
                         if data.get("type") == "partner_left":
-                            # BUG-17 FIX: Partner ended chat — notify and allow exit
-                            await websocket.send_json(data)
+                            # BUG-17 FIX: Partner ended chat — notify and allow exit.
+                            # Skip self-notification (sender_id matches this participant).
+                            if data.get("sender_id") != str(participant.id):
+                                await mark_chat_exit_eligible(participant.id, room.round_number)
+                                await websocket.send_json(data)
+                            else:
+                                logger.debug(f"Skipped self partner_left for {participant.display_id}")
                             continue
 
                         if data.get("sender_id") != str(participant.id):
@@ -692,12 +739,8 @@ async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                     if not text:
                         continue
 
-                    # Sanitize user input to prevent XSS
-                    try:
-                        clean_text = bleach.clean(text, tags=[], strip=True)
-                    except Exception as e:
-                        logger.warning(f"bleach.clean() failed for {participant.display_id}: {e}, using raw text")
-                        clean_text = text
+                    # Sanitize user input to prevent XSS — never fall back to raw text
+                    clean_text = bleach.clean(text, tags=[], strip=True)
 
                     # BUG-13 FIX: Wrap Redis incr in try/except — failure must NOT prevent echo
                     room.turn_count += 1
@@ -769,7 +812,7 @@ async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant
 
                     logger.info(f"HHC message echoed: participant={participant.display_id}, turn={shared_turn}")
 
-                    hhc_max = _effective_max_turns()
+                    hhc_max = get_chat_limits().max_turns
                     if complete_turns >= hhc_max:
                         await asyncio.sleep(3)  # Give user time to read the final response
                         try:
@@ -785,7 +828,7 @@ async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                 elif msg_type == "history_request":
                     # Reload messages from DB to include partner messages saved by listen_redis
                     await db.refresh(room, ["messages"])
-                    total_msgs = len(room.messages)
+                    shared_turns = await get_shared_turns(room, participant)
                     for msg in room.messages:
                         await websocket.send_json({
                             "type": "message",
@@ -793,7 +836,7 @@ async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                             "sender_role": msg.sender_role.value,
                             "text": msg.text,
                             "turn_number": msg.turn_number,
-                            "shared_turns": total_msgs // 2,
+                            "shared_turns": shared_turns,
                         })
 
             except json.JSONDecodeError:

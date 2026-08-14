@@ -170,7 +170,7 @@
 
 <script>
 {% raw %}
-// ── Stats Refresh ────────────────────────────────────────
+// -- Stats Refresh ----------------------------------------
 async function refreshStats() {
     try {
         const res = await fetch('/api/admin/stats');
@@ -225,7 +225,7 @@ async function refreshStats() {
     }
 }
 
-// ── Active Rooms ─────────────────────────────────────────
+// -- Active Rooms -----------------------------------------
 function updateActiveRooms(rooms) {
     const tbody = document.getElementById('active-rooms-body');
 
@@ -275,7 +275,7 @@ function updateActiveRooms(rooms) {
     }
 }
 
-// ── Chat Preview ─────────────────────────────────────────
+// -- Chat Preview -----------------------------------------
 async function toggleChatPreview(btn, roomUuid) {
     const tr = btn.closest('tr');
     let preview = tr.nextElementSibling;
@@ -314,7 +314,7 @@ async function toggleChatPreview(btn, roomUuid) {
     }
 }
 
-// ── Active Participants with Progress ─────────────────────
+// -- Active Participants with Progress ---------------------
 function updateActiveParticipants(participants) {
     const container = document.getElementById('active-participants-list');
     if (participants.length === 0) {
@@ -338,7 +338,7 @@ function updateActiveParticipants(participants) {
     }).join('');
 }
 
-// ── Stuck Warnings ───────────────────────────────────────
+// -- Stuck Warnings ---------------------------------------
 function updateStuckWarnings(stuck) {
     const container = document.getElementById('stuck-warning');
     const list = document.getElementById('stuck-list');
@@ -357,7 +357,7 @@ function updateStuckWarnings(stuck) {
     }).join('');
 }
 
-// ── LLM Stats ────────────────────────────────────────────
+// -- LLM Stats --------------------------------------------
 async function refreshLLMStats() {
     try {
         const res = await fetch('/api/admin/llm-stats');
@@ -370,7 +370,7 @@ async function refreshLLMStats() {
     }
 }
 
-// ── Event Feed ───────────────────────────────────────────
+// -- Event Feed -------------------------------------------
 let lastEventTime = null;
 
 async function refreshEvents() {
@@ -411,7 +411,7 @@ async function refreshEvents() {
     }
 }
 
-// ── Start Polling ────────────────────────────────────────
+// -- Start Polling ----------------------------------------
 setInterval(refreshStats, 5000);
 setInterval(refreshLLMStats, 5000);
 setInterval(refreshEvents, 3000);

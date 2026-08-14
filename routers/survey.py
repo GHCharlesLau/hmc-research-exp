@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from database import get_db
 from models.participant import Participant, Step
 from models.survey import SurveyResponse
-from routers.experiment import _get_participant, _redirect, _advance_step
+from dependencies.participant import get_participant, redirect_to_step, advance_step, participant_to_dict
 from services.monitoring import log_event
 from services.scales import (
     get_page_scales, get_page_likert_fields, get_page_custom_items,
@@ -55,10 +55,9 @@ async def _extract_form_dict(request: Request, field_names: list[str]) -> dict:
 
 def _render_survey(request, template: str, participant, error=None, form_data=None, page=None):
     """Render a survey template with scales data."""
-    from routers.experiment import _participant_to_dict
     ctx = {
         "request": request,
-        "p": _participant_to_dict(participant),
+        "p": participant_to_dict(participant),
         "scales": get_page_scales(page) if page else [],
     }
     if error:
@@ -68,49 +67,48 @@ def _render_survey(request, template: str, participant, error=None, form_data=No
     return request.app.state.templates.TemplateResponse(template, ctx)
 
 
-# ── Survey Prompt (instruction page, no form) ─────────────
+# -- Survey Prompt (instruction page, no form) -------------
 
 @router.get("/survey/prompt", response_class=HTMLResponse)
 async def survey_prompt(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
     if participant.current_step != Step.survey_prompt:
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
-    from routers.experiment import _participant_to_dict
     return request.app.state.templates.TemplateResponse("survey_prompt.html", {
         "request": request,
-        "p": _participant_to_dict(participant),
+        "p": participant_to_dict(participant),
     })
 
 
 @router.post("/survey/prompt")
 async def survey_prompt_submit(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
-    await _advance_step(participant, Step.survey_a, db)
+    await advance_step(participant, Step.survey_a, db)
     return RedirectResponse(url="/survey/a", status_code=303)
 
 
-# ── Survey Page A ──────────────────────────────────────────
+# -- Survey Page A ------------------------------------------
 
 @router.get("/survey/a", response_class=HTMLResponse)
 async def survey_page_a(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
     if participant.current_step != Step.survey_a:
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
     return _render_survey(request, "survey_pageA.html", participant, page="A")
 
 
 @router.post("/survey/a")
 async def survey_page_a_submit(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
@@ -128,26 +126,26 @@ async def survey_page_a_submit(request: Request, db: AsyncSession = Depends(get_
         setattr(survey, name, value)
     await db.commit()
 
-    await _advance_step(participant, Step.survey_b, db)
+    await advance_step(participant, Step.survey_b, db)
     return RedirectResponse(url="/survey/b", status_code=303)
 
 
-# ── Survey Page B ──────────────────────────────────────────
+# -- Survey Page B ------------------------------------------
 
 @router.get("/survey/b", response_class=HTMLResponse)
 async def survey_page_b(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
     if participant.current_step != Step.survey_b:
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
     return _render_survey(request, "survey_pageB.html", participant, page="B")
 
 
 @router.post("/survey/b")
 async def survey_page_b_submit(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
@@ -179,26 +177,26 @@ async def survey_page_b_submit(request: Request, db: AsyncSession = Depends(get_
         setattr(survey, name, value)
     await db.commit()
 
-    await _advance_step(participant, Step.survey_c, db)
+    await advance_step(participant, Step.survey_c, db)
     return RedirectResponse(url="/survey/c", status_code=303)
 
 
-# ── Survey Page C (Outcome Variables) ─────────────────────
+# -- Survey Page C (Outcome Variables) ---------------------
 
 @router.get("/survey/c", response_class=HTMLResponse)
 async def survey_page_c(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
     if participant.current_step != Step.survey_c:
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
     return _render_survey(request, "survey_pageC.html", participant, page="C")
 
 
 @router.post("/survey/c")
 async def survey_page_c_submit(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
@@ -216,19 +214,19 @@ async def survey_page_c_submit(request: Request, db: AsyncSession = Depends(get_
         setattr(survey, name, value)
     await db.commit()
 
-    await _advance_step(participant, Step.demographics, db)
+    await advance_step(participant, Step.demographics, db)
     return RedirectResponse(url="/survey/demographics", status_code=303)
 
 
-# ── Demographics ───────────────────────────────────────────
+# -- Demographics -------------------------------------------
 
 @router.get("/survey/demographics", response_class=HTMLResponse)
 async def demographics_page(request: Request, db: AsyncSession = Depends(get_db)):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
     if participant.current_step != Step.demographics:
-        return await _redirect(participant, db)
+        return await redirect_to_step(participant, db)
 
     return _render_survey(request, "demographics.html", participant, page="demographics")
 
@@ -243,7 +241,7 @@ async def demographics_submit(
     education: str | None = Form(default=None),
     partisanship: str | None = Form(default=None),
 ):
-    participant = await _get_participant(request, db)
+    participant = await get_participant(request, db)
     if not participant:
         return RedirectResponse(url="/consent", status_code=303)
 
@@ -297,5 +295,5 @@ async def demographics_submit(
     await db.commit()
 
     await log_event(db, participant.id, "survey_completed", "demographics")
-    await _advance_step(participant, Step.payment, db)
+    await advance_step(participant, Step.payment, db)
     return RedirectResponse(url="/payment", status_code=303)

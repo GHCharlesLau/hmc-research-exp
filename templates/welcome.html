@@ -3,17 +3,42 @@
 <h1>Welcome</h1>
 <p>Thank you for agreeing to participate. Before we begin, please set up your profile.</p>
 
-{% if p.prolific_id %}
-<p><strong>Your Prolific ID:</strong> {{ p.prolific_id }}</p>
+{% if error %}
+<div class="error">{{ error }}</div>
 {% endif %}
 
 <form method="POST" action="/welcome">
+    <div class="form-group">
+        <label for="prolific_id">Prolific ID</label>
+        <input
+            type="text"
+            id="prolific_id"
+            name="prolific_id"
+            value="{{ prolific_id_value if prolific_id_value is defined else p.prolific_id }}"
+            placeholder="Enter your Prolific ID"
+            minlength="24"
+            maxlength="24"
+            pattern="[A-Za-z0-9]{24}"
+            autocomplete="off"
+            title="Prolific IDs contain exactly 24 letters and numbers."
+            {% if not demo_mode %}required{% endif %}
+            {% if p.prolific_id %}readonly{% endif %}
+        >
+    </div>
+
     <div class="form-group">
         <label>Choose an Avatar</label>
         <div class="avatar-grid">
             {% for avatar in avatars %}
             <div class="avatar-option">
-                <input type="radio" name="avatar" id="avatar_{{ avatar }}" value="{{ avatar }}" required>
+                <input
+                    type="radio"
+                    name="avatar"
+                    id="avatar_{{ avatar }}"
+                    value="{{ avatar }}"
+                    required
+                    {% if selected_avatar is defined and selected_avatar == avatar %}checked{% endif %}
+                >
                 <label for="avatar_{{ avatar }}">
                     <img src="/static/avatar/{{ avatar }}" alt="{{ avatar }}">
                 </label>
@@ -24,7 +49,16 @@
 
     <div class="form-group">
         <label for="nickname">Choose a Nickname</label>
-        <input type="text" id="nickname" name="nickname" placeholder="Enter a nickname" required minlength="2" maxlength="20">
+        <input
+            type="text"
+            id="nickname"
+            name="nickname"
+            value="{{ nickname_value if nickname_value is defined else '' }}"
+            placeholder="Enter a nickname"
+            required
+            minlength="2"
+            maxlength="20"
+        >
     </div>
 
     <button type="submit" class="btn">Continue</button>

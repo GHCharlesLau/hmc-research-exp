@@ -24,7 +24,7 @@
             {% if is_emotion %}
                 Please share your thoughts and feelings openly. Talk about what has been on your mind recently — your emotions, personal experiences, or anything you find meaningful. There are no right or wrong answers.
             {% else %}
-                You are working on a practical task together. Try to brainstorm and discuss solutions step by step. Share your ideas and reasoning clearly.
+                You are working on a practical task together. Try to brainstorm and discuss solutions about creative uses of a cardboard box step by step. Share your ideas and reasoning clearly.
             {% endif %}
         {% elif is_chatbot %}
             <strong>Round 1 — Conversation with AI Chatbot ({{ p.chatbot_identity }})</strong><br>
@@ -32,7 +32,7 @@
             {% if is_emotion %}
                 Please share your thoughts and feelings openly. Talk about what has been on your mind recently — your emotions, personal experiences, or anything you find meaningful. There are no right or wrong answers.
             {% else %}
-                You are working on a practical task together. Try to brainstorm and discuss solutions step by step. Share your ideas and reasoning clearly.
+                You are working on a practical task together. Try to brainstorm and discuss solutions about creative uses of a cardboard box step by step. Share your ideas and reasoning clearly.
             {% endif %}
         {% elif p.partnership == "HMC" %}
             <strong>Round 1 — Conversation with {{ p.chatbot_identity }}</strong><br>
@@ -40,7 +40,7 @@
             {% if is_emotion %}
                 Please share your thoughts and feelings openly with each other. Talk about what has been on your mind recently — your emotions, personal experiences, or anything you find meaningful. There are no right or wrong answers.
             {% else %}
-                You are working on a practical task together. Try to brainstorm and discuss solutions step by step. Share your ideas and reasoning clearly.
+                You are working on a practical task together. Try to brainstorm and discuss solutions about creative uses of a cardboard box step by step. Share your ideas and reasoning clearly.
             {% endif %}
         {% else %}
             <strong>Round 1 — Conversation with Another Participant</strong><br>
@@ -48,7 +48,7 @@
             {% if is_emotion %}
                 Please share your thoughts and feelings openly with each other. Talk about what has been on your mind recently — your emotions, personal experiences, or anything you find meaningful. There are no right or wrong answers.
             {% else %}
-                You are working on a practical task together. Try to brainstorm and discuss solutions step by step. Share your ideas and reasoning clearly.
+                You are working on a practical task together. Try to brainstorm and discuss solutions about creative uses of a cardboard box step by step. Share your ideas and reasoning clearly.
             {% endif %}
         {% endif %}
     {% else %}
@@ -60,7 +60,7 @@
             {% if is_emotion %}
                 Continue sharing your thoughts and feelings. Discuss what matters to you emotionally — your experiences, concerns, or anything on your mind.
             {% else %}
-                Continue working on the practical task. Discuss ideas and try to reach a solution together.
+                Continue working on the practical task. Discuss ideas about creative uses of a cardboard box together.
             {% endif %}
         {% elif is_hhc_real %}
             <strong>Round 2 — Conversation with Another Participant</strong><br>
@@ -68,7 +68,7 @@
             {% if is_emotion %}
                 Please share your thoughts and feelings openly with each other. Talk about what has been on your mind recently — your emotions, personal experiences, or anything you find meaningful. There are no right or wrong answers.
             {% else %}
-                You are working on a practical task together. Try to brainstorm and discuss solutions step by step. Share your ideas and reasoning clearly.
+                You are working on a practical task together. Try to brainstorm and discuss solutions about creative uses of a cardboard box step by step. Share your ideas and reasoning clearly.
             {% endif %}
         {% else %}
             {# R2 HMC (non-fallback): always show "another participant" regardless of partner_label #}
@@ -77,7 +77,7 @@
             {% if is_emotion %}
                 Please share your thoughts and feelings openly with each other. Talk about what has been on your mind recently — your emotions, personal experiences, or anything you find meaningful. There are no right or wrong answers.
             {% else %}
-                You are working on a practical task together. Try to brainstorm and discuss solutions step by step. Share your ideas and reasoning clearly.
+                You are working on a practical task together. Try to brainstorm and discuss solutions about creative uses of a cardboard box step by step. Share your ideas and reasoning clearly.
             {% endif %}
         {% endif %}
     {% endif %}
@@ -91,7 +91,7 @@
     </div>
 
     <!-- Partner left notification -->
-    <div x-show="partnerLeft && !chatEnded" x-transition style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+    <div x-cloak x-show="partnerLeft && !chatEnded" x-transition style="background: #fff3cd; border: 1px solid #ffc107; padding: 12px; border-radius: 6px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
         <span><strong x-text="partnerLeftName"></strong> has left the conversation.</span>
         <button @click="leaveChat()" class="btn btn-primary" style="padding: 6px 16px;">Leave Chat</button>
     </div>
@@ -102,8 +102,8 @@
             <template x-for="msg in messages" :key="msg.msg_id || (msg.turn_number + '-' + msg.sender_role)">
                 <div class="chat-message" :class="msg.sender_role">
                     <img class="chat-avatar"
-                         :src="msg.sender_role === 'user' ? '/static/avatar/{{ p.avatar }}' : partnerAvatar"
-                         :alt='msg.sender_role === "user" ? {{ p.nickname | tojson }} : partnerName'>
+                         :src="msg.sender_role === 'user' ? userAvatar : partnerAvatar"
+                         :alt="msg.sender_role === 'user' ? userName : partnerName">
                     <div class="chat-content">
                         <div class="chat-username" x-text="msg.sender_role === 'user' ? userName : partnerName"></div>
                         <div class="chat-bubble" x-text="msg.text"></div>
@@ -140,204 +140,26 @@
     </p>
 
     <!-- Chat end notification banner -->
-    <div x-show="showEndBanner" x-transition style="background: #e3f2fd; border: 1px solid #90caf9; padding: 12px 16px; border-radius: 6px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+    <div x-cloak x-show="showEndBanner" x-transition style="background: #e3f2fd; border: 1px solid #90caf9; padding: 12px 16px; border-radius: 6px; margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
         <span><strong x-text="endReason"></strong> The conversation has ended. Redirecting...</span>
+    </div>
+
+    <!-- Timeout/dropout dialog: shown when timer runs out or partner left but min_turns not met -->
+    <div x-cloak x-show="showRetryDialog" x-transition.opacity style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 10px; padding: 28px 32px; max-width: 440px; width: 90%; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.2);">
+            <h3 style="margin-top: 0; color: #333; font-size: 1.3rem;">Time's Up</h3>
+            <p style="color: #555; line-height: 1.6; margin-bottom: 20px; font-size: 0.95rem;">
+                Your conversation has ended, but you have not completed the required minimum number of turns (<strong>{{ min_turns }}</strong> turns).<br><br>
+                Would you like to continue the study? If you choose <strong>No</strong>, you will not receive compensation.
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button @click="timeoutContinue()" style="padding: 10px 24px; border-radius: 6px; border: none; background: #1976d2; color: white; cursor: pointer; font-size: 1rem;">Yes, Continue</button>
+                <button @click="timeoutDropout()" style="padding: 10px 24px; border-radius: 6px; border: 1px solid #ccc; background: white; color: #666; cursor: pointer; font-size: 1rem;">No, Leave</button>
+            </div>
+        </div>
     </div>
 </div>
 
-<script>
-const INITIAL_MESSAGES = {{ messages | safe }};
-
-function chatApp() {
-    return {
-        messages: INITIAL_MESSAGES,
-        inputText: '',
-        turnCount: INITIAL_MESSAGES.length,
-        sharedTurns: {{ initial_shared_turns }},
-        timeRemaining: {{ max_duration }},
-        chatEnded: false,
-        showEndBanner: false,
-        endReason: '',
-        partnerLeft: false,
-        partnerLeftName: '',
-        ws: null,
-        reconnectAttempts: 0,
-        maxReconnect: 5,
-        timerInterval: null,
-        wsStatus: 'connecting',
-        // Partner display: avatar and name depend on condition + deception logic.
-        // Priority: force_chatbot(R2 fallback) > R2 HHC real > R1 HHC+chatbot_label(shows MyBot) > R1 HHC+human_label(real partner) > HMC
-        partnerAvatar: {% if force_chatbot %}'/static/avatar/myBot.png'
-            {% elif not is_r1 and partner_info %}'/static/avatar/{{ partner_info.avatar }}'
-            {% elif partner_info and p.partner_label == "chatbot" %}'/static/avatar/myBot.png'
-            {% elif partner_info %}'/static/avatar/{{ partner_info.avatar }}'
-            {% elif not is_r1 %}'/static/avatar/fox.png'
-            {% elif p.partner_label == "human" %}'/static/avatar/fox.png'
-            {% else %}'/static/avatar/myBot.png'{% endif %},
-        partnerName: {% if force_chatbot %}"MyBot"
-            {% elif not is_r1 and partner_info %}{{ partner_info.nickname | tojson }}
-            {% elif partner_info and p.partner_label == "chatbot" %}"MyBot"
-            {% elif partner_info %}{{ partner_info.nickname | tojson }}
-            {% elif not is_r1 %}"Tommy"
-            {% elif p.partner_label == "human" %}"Tommy"
-            {% else %}"MyBot"{% endif %},
-        userName: {{ p.nickname | tojson }},
-
-        init() {
-            // Start countdown timer
-            this.timerInterval = setInterval(() => {
-                if (this.timeRemaining > 0) {
-                    this.timeRemaining--;
-                    if (this.timeRemaining <= 0) {
-                        this.handleChatEnd('timeout');
-                    }
-                }
-            }, 1000);
-
-            this.connectWebSocket();
-            this.$nextTick(() => this.scrollToBottom());
-        },
-
-        connectWebSocket() {
-            const roomUuid = '{{ room.id }}';
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            this.wsStatus = 'connecting...';
-            this.ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat/${roomUuid}`);
-
-            this.ws.onopen = () => {
-                const wasReconnect = this.reconnectAttempts > 0;
-                this.reconnectAttempts = 0;
-                this.wsStatus = 'connected';
-                // BUG-20 FIX: Only request history on reconnect (not first connect).
-                // INITIAL_MESSAGES already has all DB messages from page load.
-                if (wasReconnect && this.messages.length > 0) {
-                    this.ws.send(JSON.stringify({ type: 'history_request' }));
-                }
-            };
-
-            this.ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'message') {
-                        // BUG-21 FIX: Always deduplicate by (turn_number, sender_role) pair.
-                        const exists = this.messages.some(m =>
-                            m.turn_number === data.turn_number && m.sender_role === data.sender_role
-                        );
-                        if (!exists) {
-                            this.messages.push(data);
-                            this.turnCount = this.messages.length;
-                            // Update shared turns (1 turn = 1 exchange)
-                            if (data.shared_turns !== undefined && data.shared_turns > this.sharedTurns) {
-                                this.sharedTurns = data.shared_turns;
-                            }
-                            this.$nextTick(() => this.scrollToBottom());
-                        } else {
-                            console.warn('[HHC dedup] Dropped duplicate:', data.turn_number, data.sender_role);
-                        }
-                    } else if (data.type === 'chat_end') {
-                        console.log('[HHC] chat_end received:', data.reason);
-                        this.handleChatEnd(data.reason);
-                    } else if (data.type === 'partner_left') {
-                        // Use partnerName (deception-correct) instead of data.sender_name (real name).
-                        // For partner_label=chatbot: shows "MyBot", not the real participant name.
-                        this.partnerLeft = true;
-                        this.partnerLeftName = this.partnerName;
-                        this.$nextTick(() => this.scrollToBottom());
-                    } else if (data.type === 'error') {
-                        console.error('Chat error:', data.message);
-                    }
-                } catch (e) {
-                    console.error('Failed to parse WebSocket message:', e, event.data);
-                }
-            };
-
-            this.ws.onclose = (event) => {
-                if (!this.chatEnded) {
-                    if (this.reconnectAttempts < this.maxReconnect) {
-                        this.wsStatus = 'reconnecting...';
-                        this.reconnectAttempts++;
-                        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 10000);
-                        setTimeout(() => this.connectWebSocket(), delay);
-                    } else {
-                        this.wsStatus = 'disconnected';
-                    }
-                }
-            };
-
-            this.ws.onerror = (event) => {
-                console.error('WebSocket error:', event);
-                this.wsStatus = 'error';
-            };
-        },
-
-        sendMessage() {
-            const text = this.inputText.trim();
-            if (!text || this.chatEnded || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-            this.ws.send(JSON.stringify({ type: 'message', text }));
-            this.inputText = '';
-            this.$refs.chatInput.focus();
-        },
-
-        handleChatEnd(reason) {
-            if (this.chatEnded) return;  // prevent double-trigger
-            this.chatEnded = true;
-            clearInterval(this.timerInterval);
-
-            // Show non-blocking notification banner instead of alert popup
-            this.endReason = reason === 'timeout' ? 'Time is up.' :
-                             reason === 'max_turns' ? 'Maximum turns reached.' : '';
-            this.showEndBanner = true;
-            this.$nextTick(() => this.scrollToBottom());
-
-            // POST to end-chat endpoint after a delay so user can read final messages
-            setTimeout(() => {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = reason === 'timeout' ? '/chat/end?timeout=1' : '/chat/end';
-                document.body.appendChild(form);
-                form.submit();
-            }, 5000);
-        },
-
-        async endChat() {
-            if (this.sharedTurns < {{ min_turns }} || this.chatEnded) return;
-            if (confirm('Are you sure you want to end the conversation?')) {
-                this.chatEnded = true;
-                clearInterval(this.timerInterval);
-                if (this.ws) this.ws.close();
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '/chat/end';
-                document.body.appendChild(form);
-                form.submit();
-            }
-        },
-
-        // BUG-17 FIX: Leave chat after partner left (no min_turns check)
-        leaveChat() {
-            if (this.chatEnded) return;
-            this.chatEnded = true;
-            clearInterval(this.timerInterval);
-            if (this.ws) this.ws.close();
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/chat/end?partner_left=1';
-            document.body.appendChild(form);
-            form.submit();
-        },
-
-        scrollToBottom() {
-            const el = this.$refs.messages;
-            if (el) el.scrollTop = el.scrollHeight;
-        },
-
-        formatTime(seconds) {
-            const m = Math.floor(seconds / 60);
-            const s = seconds % 60;
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        }
-    };
-}
-</script>
+<script id="chat-config" type="application/json">{{ chat_config | tojson }}</script>
+<script src="/static/js/chat.js"></script>
 {% endblock %}

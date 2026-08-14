@@ -336,7 +336,9 @@ https://your-domain.com/?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_I
 - **HMC（人机对话）**：参与者阅读说明后直接进入与 AI 的聊天
 - **HHC（人人对话）**：参与者进入等待室，系统自动匹配（Redis 队列，每 3 秒检查一次）
   - 匹配成功：两人进入双人聊天（通过 WebSocket）
-  - 120 秒未匹配：自动回退为 HMC（`partnership` 改为 HMC，与 AI 聊天，数据仍保留 `hhc_fallback=True` 标记）
+  - 120 秒未匹配：自动回退为 HMC，与 AI 聊天，标记 `hhc_fallback=True`
+    - **R1 超时**：`partnership` 改写为 HMC（与 R1 实际聊天模态一致）
+    - **R2 超时**：`partnership` 保留原值（保持 ITT 分析的随机分组），R2 实际模态由该轮 ChatRoom 的 `room_type` 字段记录
 
 #### 4.2 聊天控制
 
@@ -668,7 +670,9 @@ Consent → Welcome → Priming → R1 Instructions → Chat → R2 Instructions
 - **HMC**: Participant reads instructions → enters chat with AI immediately
 - **HHC**: Participant enters waiting room → auto-matched via Redis queue (3s polling)
   - Match found: Both enter HHC chat via WebSocket
-  - 120s timeout: Fallback to HMC (`partnership` changed to HMC, AI chat, data still has `hhc_fallback=True` flag)
+  - 120s timeout: Fallback to HMC (AI chat), `hhc_fallback=True`
+    - **Round 1 timeout**: `partnership` rewritten to HMC (matches R1 actual chat modality)
+    - **Round 2 timeout**: `partnership` preserved (keeps original random assignment for ITT analysis); R2 actual modality is recorded in that round's ChatRoom `room_type`
 
 #### 4.2 Chat Controls
 

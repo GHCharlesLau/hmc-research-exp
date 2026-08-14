@@ -20,7 +20,7 @@ MATCH_CHANNEL = "matchmaking:events"
 CHAT_CHANNEL_PREFIX = "chat:room:"
 
 
-# ── Redis connection pool (N3: connection pooling) ────────────
+# -- Redis connection pool (N3: connection pooling) ------------
 
 _redis_pool: aioredis.Redis | None = None
 
@@ -35,7 +35,7 @@ async def get_redis() -> aioredis.Redis:
     return _redis_pool
 
 
-# ── Lua script for atomic matching (N2: race condition fix) ──
+# -- Lua script for atomic matching (N2: race condition fix) --
 
 _MATCH_LUA = """
 local key = KEYS[1]
@@ -58,33 +58,53 @@ async def _get_lua_script(r: aioredis.Redis) -> object:
     return _lua_script
 
 
-async def enqueue_match(participant_id: str, round_number: int, task_type: str = "") -> None:
+def _queue_key(task_type: str, round_number: int) -> str:
+    """Redis key for one task_type × round queue. task_type must not be empty."""
+    if not task_type:
+        raise ValueError("task_type is required so emotion and function queues stay separate")
+    return f"{MATCH_QUEUE_PREFIX}{task_type}:round_{round_number}"
+
+
+def can_pair_participants(p1, p2, round_number: int) -> str | None:
+    """Return a skip reason, or None if this pair may enter a chat room.
+
+    Both participants must share the same assigned task_type so Round 1 and
+    Round 2 stay on the same task. Round 2 also excludes the Round 1 partner.
+    """
+    if p1.task_type != p2.task_type:
+        return "task_type_mismatch"
+    if round_number >= 2 and (p1.partner_id == p2.id or p2.partner_id == p1.id):
+        return "r1_partners"
+    return None
+
+
+async def enqueue_match(participant_id: str, round_number: int, task_type: str) -> None:
     """Add participant to matchmaking queue with timestamp as score.
 
     Queue is separated by task_type so emotionTask and functionTask
     participants are only matched within their own type.
     """
     r = await get_redis()
-    key = f"{MATCH_QUEUE_PREFIX}{task_type}:round_{round_number}"
+    key = _queue_key(task_type, round_number)
     await r.zadd(key, {participant_id: time.time()})
     logger.info(f"Participant {participant_id} enqueued for round {round_number} (task={task_type})")
 
 
-async def dequeue_match(participant_id: str, round_number: int, task_type: str = "") -> None:
+async def dequeue_match(participant_id: str, round_number: int, task_type: str) -> None:
     """Remove participant from matchmaking queue."""
     r = await get_redis()
-    key = f"{MATCH_QUEUE_PREFIX}{task_type}:round_{round_number}"
+    key = _queue_key(task_type, round_number)
     await r.zrem(key, participant_id)
 
 
-async def try_match(round_number: int, task_type: str = "") -> tuple[str, str] | None:
+async def try_match(round_number: int, task_type: str) -> tuple[str, str] | None:
     """Atomically pair the two earliest participants in the queue.
 
     Uses a Redis Lua script to prevent race conditions when multiple
     WebSocket connections call try_match concurrently.
     """
     r = await get_redis()
-    key = f"{MATCH_QUEUE_PREFIX}{task_type}:round_{round_number}"
+    key = _queue_key(task_type, round_number)
     script = await _get_lua_script(r)
     members = await script(keys=[key])
     if members and len(members) >= 2:
@@ -94,10 +114,10 @@ async def try_match(round_number: int, task_type: str = "") -> tuple[str, str] |
     return None
 
 
-async def get_queue_position(participant_id: str, round_number: int, task_type: str = "") -> int:
+async def get_queue_position(participant_id: str, round_number: int, task_type: str) -> int:
     """Return 1-based position of participant in queue (0 if not found)."""
     r = await get_redis()
-    key = f"{MATCH_QUEUE_PREFIX}{task_type}:round_{round_number}"
+    key = _queue_key(task_type, round_number)
     rank = await r.zrank(key, participant_id)
     return (rank + 1) if rank is not None else 0
 
@@ -114,14 +134,14 @@ async def publish_chat_message(room_id: str, message: dict) -> None:
     await r.publish(f"{CHAT_CHANNEL_PREFIX}{room_id}", json.dumps(message))
 
 
-async def get_queue_size(round_number: int, task_type: str = "") -> int:
+async def get_queue_size(round_number: int, task_type: str) -> int:
     """Return the number of participants waiting in the queue."""
     r = await get_redis()
-    key = f"{MATCH_QUEUE_PREFIX}{task_type}:round_{round_number}"
+    key = _queue_key(task_type, round_number)
     return await r.zcard(key)
 
 
-# ── Match result notification (cross-participant) ───────────
+# -- Match result notification (cross-participant) -----------
 
 MATCH_RESULT_PREFIX = "matchmaking:result:"
 
@@ -145,11 +165,12 @@ async def get_match_result(participant_id: str) -> dict | None:
     return None
 
 
-# ── HHC shared turn counting (N6) ──────────────────────────
+# -- HHC shared turn counting (N6) --------------------------
 
 HHC_MSG_COUNT_PREFIX = "hhc_msg_count:"
 # Per-participant message count: 1 turn = each participant sends at least 1 message
 HHC_PEER_MSG_PREFIX = "hhc_peer_msg:"
+HHC_COUNTER_TTL = 86400  # 24h — counters must not persist indefinitely
 
 
 async def incr_hhc_message_count(room_id: str) -> int:
@@ -160,7 +181,10 @@ async def incr_hhc_message_count(room_id: str) -> int:
     the displayed turn count.
     """
     r = await get_redis()
-    return await r.incr(f"{HHC_MSG_COUNT_PREFIX}{room_id}")
+    key = f"{HHC_MSG_COUNT_PREFIX}{room_id}"
+    count = await r.incr(key)
+    await r.expire(key, HHC_COUNTER_TTL)
+    return count
 
 
 async def get_hhc_message_count(room_id: str) -> int:
@@ -177,7 +201,9 @@ async def incr_hhc_peer_msg_count(room_id: str, participant_id: str) -> int:
     """
     r = await get_redis()
     key = f"{HHC_PEER_MSG_PREFIX}{room_id}:{participant_id}"
-    return await r.incr(key)
+    count = await r.incr(key)
+    await r.expire(key, HHC_COUNTER_TTL)
+    return count
 
 
 async def get_hhc_peer_msg_count(room_id: str, participant_id: str) -> int:

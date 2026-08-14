@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 import litellm
 from config import get_settings
 
@@ -22,7 +23,7 @@ def get_semaphore() -> asyncio.Semaphore:
 FALLBACK_RESPONSE = "I'm sorry, I'm having trouble responding right now. Could you try again?"
 
 
-# ── Default character prompts (from ConExperiment v1) ─────────
+# -- Default character prompts (from ConExperiment v1) ---------
 # Used when no config is set in the admin dashboard.
 
 DEFAULT_PROMPTS: dict[str, str] = {
@@ -33,6 +34,7 @@ DEFAULT_PROMPTS: dict[str, str] = {
     4. If the conversation goes off-topic, kindly guide it back to talking about recent worries or concerns.
     5. It is recommended that the conversation consists of 5 to 15 rounds.
     6. Always use a friendly tone and reply in English. Try to use the most common words possible.
+    7. Limit your responses to 15 words or so. Try to be concise and avoid long-winded explanations.
     """,
     "CHARACTER_PROMPT_Afake": """
     1. Comply strictly with the instructions below.
@@ -41,6 +43,7 @@ DEFAULT_PROMPTS: dict[str, str] = {
     4. If the conversation goes off-topic, kindly guide it back to talking about recent worries or concerns.
     5. It is recommended that the conversation consists of 5 to 15 rounds.
     6. Always use a friendly tone and reply in English. Try to use the most common words possible.
+    7. Limit your responses to 15 words or so. Try to be concise and avoid long-winded explanations.
     """,
     "CHARACTER_PROMPT_B": """
     1. Comply strictly with the instructions below.
@@ -51,6 +54,7 @@ DEFAULT_PROMPTS: dict[str, str] = {
     5. It is recommended that the conversation consists of 5 to 15 rounds.
     6. Always use a friendly tone and reply in English. Try to use the most common words possible.
     7. Give new ideas infrequently.
+    8. Limit your responses to 10 words or so. Try to be concise and avoid long-winded explanations.
     """,
     "CHARACTER_PROMPT_Bfake": """
     1. Comply strictly with the instructions below.
@@ -61,11 +65,12 @@ DEFAULT_PROMPTS: dict[str, str] = {
     5. It is recommended that the conversation consists of 5 to 15 rounds.
     6. Always use a friendly tone and reply in English. Try to use the most common words possible.
     7. Give new ideas infrequently.
+    8. Limit your responses to 10 words or so. Try to be concise and avoid long-winded explanations.
     """,
 }
 
 
-# ── Config cache (N10: avoid repeated DB queries per message) ──
+# -- Config cache (N10: avoid repeated DB queries per message) --
 
 _config_cache: dict[str, str] = {}
 _config_cache_loaded: bool = False
@@ -88,7 +93,7 @@ async def get_config_value(db, key: str, default: str = "") -> str:
         _config_cache_loaded = True
         logger.info("LLM config cache loaded from database")
 
-    return _config_cache.get(key, default)
+    return _config_cache.get(key) or default
 
 
 def invalidate_config_cache() -> None:
@@ -101,16 +106,81 @@ def invalidate_config_cache() -> None:
 
 def get_prompt_key(task_type: str, partner_label: str) -> str:
     """Map task_type + partner_label to the prompt config key."""
+    task = task_type.value if hasattr(task_type, "value") else str(task_type)
+    label = partner_label.value if hasattr(partner_label, "value") else str(partner_label)
     mapping = {
         ("emotionTask", "chatbot"): "CHARACTER_PROMPT_A",
         ("emotionTask", "human"): "CHARACTER_PROMPT_Afake",
         ("functionTask", "chatbot"): "CHARACTER_PROMPT_B",
         ("functionTask", "human"): "CHARACTER_PROMPT_Bfake",
     }
-    return mapping[(task_type, partner_label)]
+    key = mapping.get((task, label))
+    if key:
+        return key
+    logger.error("Unknown prompt mapping for task_type=%s partner_label=%s", task, label)
+    if "function" in task:
+        return "CHARACTER_PROMPT_B" if label == "chatbot" else "CHARACTER_PROMPT_Bfake"
+    return "CHARACTER_PROMPT_A" if label == "chatbot" else "CHARACTER_PROMPT_Afake"
 
 
-async def call_llm(db, task_type: str, partner_label: str, chat_history: list[dict]) -> str:
+TASK_STAY_ON_PROMPT = {
+    "emotionTask": (
+        "This conversation is the emotion / personal-concerns task. "
+        "Stay on worries, concerns, and personal experiences. "
+        "Do not switch to a different task (such as brainstorming object uses)."
+    ),
+    "functionTask": (
+        "This conversation is the cardboard-box uses task. "
+        "Stay on brainstorming unique uses for a cardboard box. "
+        "Do not switch to a different task (such as talking about emotions or worries)."
+    ),
+}
+
+
+async def get_r1_chat_context(db, participant_id: uuid.UUID, partner_label_value: str) -> str | None:
+    """Fetch R1 chat messages for context injection into R2 system prompt.
+
+    Injects whenever participant was told their R1 partner was a chatbot,
+    regardless of whether R1 was actually HMC (AI) or HHC (real human).
+    """
+    if partner_label_value != "chatbot":
+        return None
+
+    from sqlalchemy import select
+    from models.chat import ChatRoom, SenderRole
+
+    result = await db.execute(
+        select(ChatRoom).where(
+            ChatRoom.participant_id == participant_id,
+            ChatRoom.round_number == 1,
+        ).order_by(ChatRoom.created_at.desc()).limit(1)
+    )
+    r1_room = result.scalar_one_or_none()
+    if not r1_room or not r1_room.messages:
+        return None
+
+    lines = ["[Previous conversation context -- Round 1]"]
+    for msg in r1_room.messages:
+        role = "Participant" if msg.sender_role == SenderRole.user else "MyBot"
+        lines.append(f"{role}: {msg.text}")
+    lines.append("[End of Round 1 context]")
+    lines.append(
+        "Use the Round 1 transcript only for continuity. "
+        "Round 2 is the SAME task as Round 1; do not switch topics."
+    )
+
+    return "\n".join(lines)
+
+
+async def call_llm(
+    db,
+    task_type: str,
+    partner_label: str,
+    chat_history: list[dict],
+    *,
+    r1_context: str | None = None,
+    round_number: int | None = None,
+) -> str:
     """Call the LLM with the appropriate character prompt and chat history.
 
     Args:
@@ -118,6 +188,8 @@ async def call_llm(db, task_type: str, partner_label: str, chat_history: list[di
         task_type: "emotionTask" or "functionTask"
         partner_label: "chatbot" or "human"
         chat_history: List of {"role": "user"|"assistant", "content": str}
+        r1_context: Optional R1 conversation transcript to append to system prompt.
+        round_number: 1 or 2; used to remind the model both rounds share one task.
 
     Returns:
         The LLM response text.
@@ -131,6 +203,22 @@ async def call_llm(db, task_type: str, partner_label: str, chat_history: list[di
     if not system_prompt:
         logger.error(f"System prompt not found for key: {prompt_key}")
         return FALLBACK_RESPONSE
+
+    task = task_type.value if hasattr(task_type, "value") else str(task_type)
+    stay_on_task = TASK_STAY_ON_PROMPT.get(task, "")
+    if stay_on_task:
+        if round_number == 2:
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                "This is Round 2 of the SAME task as Round 1. "
+                f"{stay_on_task}"
+            )
+        else:
+            system_prompt = f"{system_prompt}\n\n{stay_on_task}"
+
+    if r1_context:
+        system_prompt = f"{system_prompt}\n\n{r1_context}"
+        logger.info(f"Injected R1 context into system prompt ({len(r1_context)} chars)")
 
     messages = [{"role": "system", "content": system_prompt}] + chat_history
 

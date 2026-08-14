@@ -43,6 +43,7 @@ class Participant(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     display_id: Mapped[str] = mapped_column(String(10), unique=True, index=True)
     prolific_id_encrypted: Mapped[str] = mapped_column(String(256), unique=True, nullable=True)
+    prolific_id_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
     session_id: Mapped[str] = mapped_column(String(100), nullable=True)
     study_id: Mapped[str] = mapped_column(String(100), nullable=True)
 
@@ -58,6 +59,7 @@ class Participant(Base):
     is_timeout: Mapped[bool] = mapped_column(Boolean, default=False)
     hhc_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
     is_test: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_dropout: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Profile
     avatar: Mapped[str] = mapped_column(String(50), nullable=True)

@@ -128,7 +128,7 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
     header = [
         "display_id", "prolific_id", "task_type", "partnership", "partner_label",
         "partner_display_id",
-        "current_round", "hhc_fallback", "is_finished", "is_timeout",
+        "current_round", "hhc_fallback", "is_finished", "is_timeout", "is_dropout",
     ]
     header += _build_survey_header()
     header += ["chat_r1_turns", "chat_r1_duration", "chat_r2_turns", "chat_r2_duration"]
@@ -139,7 +139,7 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
         prolific_id = ""
         if p.prolific_id_encrypted:
             try:
-                prolific_id = decrypt_prolific_id(p.prolific_id_encrypted)
+                prolific_id = f'="{decrypt_prolific_id(p.prolific_id_encrypted)}"'
             except Exception:
                 prolific_id = "DECRYPT_ERROR"
 
@@ -165,7 +165,7 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
             p.display_id, prolific_id, p.task_type.value, p.partnership.value,
             p.partner_label.value, partner_display_id,
             p.current_round, p.hhc_fallback, p.is_finished,
-            p.is_timeout,
+            p.is_timeout, p.is_dropout,
         ]
         # Survey data
         if sr:

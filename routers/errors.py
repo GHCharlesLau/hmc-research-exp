@@ -15,7 +15,17 @@ async def not_found_handler(request: Request, exc):
 
 
 async def server_error_handler(request: Request, exc):
-    logger.error(f"500 error: {exc}")
+    logger.exception("500 error: %s", exc)
+    return request.app.state.templates.TemplateResponse("500.html", {
+        "request": request,
+    }, status_code=500)
+
+
+async def unhandled_error_handler(request: Request, exc):
+    """Catch unhandled HTTP exceptions so they render 500.html and log a traceback."""
+    if request.scope.get("type") != "http":
+        raise exc
+    logger.exception("Unhandled server error: %s", exc)
     return request.app.state.templates.TemplateResponse("500.html", {
         "request": request,
     }, status_code=500)

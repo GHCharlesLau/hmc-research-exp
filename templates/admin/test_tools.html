@@ -33,7 +33,7 @@
 <!-- Create Participant by Condition (prominent, toggle) -->
 <div id="custom-create-panel" style="display: none; padding: 20px; border: 2px solid #4CAF50; border-radius: 8px; margin-bottom: 20px; background: #f0fff0;">
     <h3 style="margin-top: 0; color: #2e7d32;">Create Participant by Experimental Condition</h3>
-    <p style="font-size: 0.85rem; color: #666; margin-bottom: 16px;">Select the 2x2x2 factorial conditions. Participant starts at <strong>instructions_r1</strong>.</p>
+    <p style="font-size: 0.85rem; color: #666; margin-bottom: 16px;">Select the 2×2×2 factorial conditions. The participant starts at <strong>consent</strong> (full flow). Agreeing on that page <strong>keeps these conditions</strong> — they are not re-randomized. Nickname/Avatar below are defaults the participant can change on Welcome.</p>
     <form id="custom-create-form">
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px;">
             <label style="font-weight: 600;">
@@ -130,13 +130,14 @@
                     <th>Nickname</th>
                     <th>Task</th>
                     <th>Partnership</th>
+                    <th>Partner Label</th>
                     <th>Current Step</th>
                     <th>Round</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="test-participants-body">
-                <tr><td colspan="7" style="color: #888;">Loading...</td></tr>
+                <tr><td colspan="8" style="color: #888;">Loading...</td></tr>
             </tbody>
         </table>
     </div>
@@ -167,6 +168,7 @@
                     <option value="survey_prompt">survey_prompt</option>
                     <option value="survey_a">survey_a</option>
                     <option value="survey_b">survey_b</option>
+                    <option value="survey_c">survey_c</option>
                     <option value="demographics">demographics</option>
                     <option value="payment">payment</option>
                 </select>
@@ -218,6 +220,7 @@
                             <option value="survey_prompt">survey_prompt</option>
                             <option value="survey_a">survey_a</option>
                             <option value="survey_b">survey_b</option>
+                            <option value="survey_c">survey_c</option>
                             <option value="demographics">demographics</option>
                             <option value="payment">payment</option>
                         </select>
@@ -261,7 +264,7 @@
 </div>
 
 <script>
-// ── Custom Create by Condition ─────────────────────────────
+// -- Custom Create by Condition ----
 function toggleCustomCreate() {
     const el = document.getElementById('custom-create-panel');
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -284,14 +287,14 @@ document.getElementById('custom-create-form').addEventListener('submit', async (
     e.preventDefault();
     const form = e.target;
     const body = new URLSearchParams(new FormData(form));
-    body.set('start_step', 'instructions_r1');  // always start at instructions_r1
+    body.set('start_step', 'consent');  // start at consent so the tester goes through the full flow
     try {
         const res = await fetch('/api/admin/test/participant', { method: 'POST', body });
         const data = await res.json();
         if (data.detail) { alert('Error: ' + data.detail); return; }
         const el = document.getElementById('custom-create-result');
         el.style.display = 'block';
-        el.innerHTML = `<strong>Created ${data.display_id}</strong> (${body.get('task_type')} / ${body.get('partnership')} / ${body.get('partner_label')})<br>
+        el.innerHTML = `<strong>Created ${data.display_id}</strong> (${data.task_type} / ${data.partnership} / ${data.partner_label})<br>
             <a href="${data.url}" target="_blank" style="font-size: 1.1rem; font-weight: bold;">${data.url}</a><br>
             <small>Resume: <a href="${data.resume_url || '#'}" target="_blank">${data.resume_url || 'N/A'}</a></small>`;
         loadTestParticipants();
@@ -300,7 +303,7 @@ document.getElementById('custom-create-form').addEventListener('submit', async (
     } catch (err) { alert('Request failed: ' + err); }
 });
 
-// ── Quick Create HHC Pair at Chat ────────────────────────
+// -- Quick Create HHC Pair at Chat ----
 async function quickCreateHHC() {
     const taskType = prompt('Task type?', 'emotionTask');
     if (!taskType) return;
@@ -316,7 +319,7 @@ async function quickCreateHHC() {
         if (data.detail) { alert('Error: ' + data.detail); return; }
         const el = document.getElementById('hhc-pair-result');
         el.style.display = 'block';
-        el.innerHTML = `<strong>HHC Pair at Chat!</strong> (Room: ${data.room_id})<br><br>
+        el.innerHTML = `<strong>HHC Pair at Chat!</strong> (task: ${data.task_type || taskType}, Room: ${data.room_id})<br><br>
             <strong>A (${data.participant1.display_id}):</strong>
             <a href="${data.participant1.entry_url}" target="_blank">Open</a> |
             <a href="${data.participant1.room_url}" target="_blank">Chat</a><br>
@@ -328,7 +331,7 @@ async function quickCreateHHC() {
     } catch (err) { alert('Request failed: ' + err); }
 }
 
-// ── Matchmaking Flow Test ────────────────────────────────
+// -- Matchmaking Flow Test ----
 function toggleMatchmakingForm() {
     const el = document.getElementById('matchmaking-form');
     el.style.display = el.style.display === 'none' ? 'block' : 'none';
@@ -344,7 +347,7 @@ document.getElementById('matchmaking-test-form').addEventListener('submit', asyn
         if (data.detail) { alert('Error: ' + data.detail); return; }
         const el = document.getElementById('matchmaking-result');
         el.style.display = 'block';
-        el.innerHTML = `<strong>Matchmaking Test Pair Created!</strong><br>
+        el.innerHTML = `<strong>Matchmaking Test Pair Created!</strong> (task: ${data.task_type || '—'})<br>
             <span style="color: #e65100; font-weight: bold;">Open each URL in a separate incognito window!</span><br><br>
             <strong>A (${data.participant1.display_id} - ${data.participant1.nickname}):</strong><br>
             <a href="${data.participant1.url}" target="_blank">${data.participant1.url}</a><br><br>
@@ -355,7 +358,7 @@ document.getElementById('matchmaking-test-form').addEventListener('submit', asyn
     } catch (err) { alert('Request failed: ' + err); }
 });
 
-// ── Test Participant Dashboard Table ─────────────────────
+// -- Test Participant Dashboard Table ----
 async function loadTestParticipants() {
     try {
         const res = await fetch('/api/admin/test/participants');
@@ -364,7 +367,7 @@ async function loadTestParticipants() {
         const list = data.participants || [];
 
         if (list.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="color: #888;">No test participants.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="color: #888;">No test participants.</td></tr>';
             return;
         }
 
@@ -372,11 +375,13 @@ async function loadTestParticipants() {
             const stepColor = p.current_step.startsWith('chat') ? '#fff3e0' :
                                p.current_step.startsWith('instructions') ? '#e3f2fd' :
                                p.current_step.startsWith('survey') ? '#f3e5f5' : '#f5f5f5';
+            const labelColor = p.partner_label === 'chatbot' ? '#e1f5fe' : '#fff3e0';
             return `<tr>
                 <td><strong>${p.display_id}</strong></td>
                 <td>${p.nickname || '-'}</td>
                 <td>${p.task_type}</td>
                 <td>${p.partnership}</td>
+                <td><code style="background: ${labelColor}; padding: 2px 6px; border-radius: 3px;">${p.partner_label}</code></td>
                 <td><code style="background: ${stepColor}; padding: 2px 6px; border-radius: 3px;">${p.current_step}</code></td>
                 <td>R${p.current_round}</td>
                 <td style="white-space: nowrap;">
@@ -413,21 +418,37 @@ async function deleteTestParticipant(id, displayId) {
     } catch (err) { alert('Request failed: ' + err); }
 }
 
-// ── Step Control (dropdown) ──────────────────────────────
+// -- Step Control (dropdown) ----
 async function loadParticipantOptions() {
     try {
         const res = await fetch('/api/admin/test/participant-options');
         const data = await res.json();
         const select = document.getElementById('step-participant-select');
+        const prevValue = select.value;
         select.innerHTML = '<option value="">-- select participant --</option>';
         for (const p of (data.participants || [])) {
             const opt = document.createElement('option');
             opt.value = p.id;
             opt.textContent = `${p.display_id} - ${p.nickname || '(no name)'} [${p.current_step}]`;
+            opt.dataset.step = p.current_step;
             select.appendChild(opt);
         }
+        // Restore previous selection so the dropdown doesn't reset on every refresh
+        if (prevValue) select.value = prevValue;
+        syncStepDropdown();
     } catch (err) { console.error(err); }
 }
+
+// When a participant is picked, prefill the step dropdown with their current_step
+// so clicking Apply without changing it doesn't silently jump them back to "consent".
+function syncStepDropdown() {
+    const select = document.getElementById('step-participant-select');
+    const stepSelect = document.querySelector('#step-form select[name="step"]');
+    const opt = select.options[select.selectedIndex];
+    const step = opt && opt.dataset ? opt.dataset.step : null;
+    if (step && stepSelect) stepSelect.value = step;
+}
+document.getElementById('step-participant-select').addEventListener('change', syncStepDropdown);
 
 document.getElementById('step-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -449,7 +470,7 @@ document.getElementById('step-form').addEventListener('submit', async (e) => {
     } catch (err) { alert('Request failed: ' + err); }
 });
 
-// ── Original Create Participant Form ─────────────────────
+// -- Original Create Participant Form ----
 document.getElementById('create-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
@@ -460,16 +481,16 @@ document.getElementById('create-form').addEventListener('submit', async (e) => {
         if (data.detail) { alert('Error: ' + data.detail); return; }
         const result = document.getElementById('create-result');
         result.style.display = 'block';
-        result.innerHTML = `<strong>Created ${data.display_id}</strong><br>
+        result.innerHTML = `<strong>Created ${data.display_id}</strong> (${data.task_type} / ${data.partnership} / ${data.partner_label})<br>
             <a href="${data.url}" target="_blank">${data.url}</a><br>
-            <small>ID: ${data.participant_id}</small>`;
+            <small>ID: ${data.participant_id} · step: ${data.current_step}</small>`;
         loadTestParticipants();
         loadParticipantOptions();
         loadTestCount();
     } catch (err) { alert('Request failed: ' + err); }
 });
 
-// ── HHC Queue Status ─────────────────────────────────────
+// -- HHC Queue Status ----
 async function loadQueues() {
     try {
         const res = await fetch('/api/admin/test/hhc-queues');
@@ -502,7 +523,7 @@ async function clearQueue(name) {
 
 document.getElementById('refresh-queues').addEventListener('click', loadQueues);
 
-// ── Test Data Management ─────────────────────────────────
+// -- Test Data Management ----
 async function loadTestCount() {
     try {
         const res = await fetch('/api/admin/test/count');
@@ -529,7 +550,7 @@ async function cleanupAll() {
     } catch (err) { alert('Request failed: ' + err); }
 }
 
-// ── Initialize ────────────────────────────────────────────
+// -- Initialize ----
 loadTestParticipants();
 loadParticipantOptions();
 loadQueues();

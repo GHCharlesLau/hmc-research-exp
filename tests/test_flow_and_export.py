@@ -1,0 +1,91 @@
+from models.participant import Step
+from dependencies.participant import can_access_payment, should_reuse_consent_session
+from schemas.survey import validate_likert_fields, DemographicsSubmit
+from services.export import _build_survey_header
+from services.scales import LIKERT_SCALES, get_page_likert_fields
+from config import _convert_db_url
+from services.auth import parse_participant_cookie, sign_participant_id
+
+
+class _P:
+    def __init__(self, current_step, is_finished=False):
+        self.current_step = current_step
+        self.is_finished = is_finished
+
+
+def test_payment_blocked_before_demographics():
+    assert can_access_payment(_P(Step.survey_a)) is False
+    assert can_access_payment(_P(Step.welcome)) is False
+    assert can_access_payment(_P(Step.chat_r2)) is False
+
+
+def test_payment_allowed_at_payment_or_finished():
+    assert can_access_payment(_P(Step.payment)) is True
+    assert can_access_payment(_P(Step.survey_a, is_finished=True)) is True
+
+
+def test_likert_validation_rejects_out_of_range():
+    err = validate_likert_fields({"sen_a_1": 8}, ["sen_a_1"])
+    assert err is not None
+    assert validate_likert_fields({"sen_a_1": 4}, ["sen_a_1"]) is None
+
+
+def test_page_a_fields_match_registry():
+    fields = get_page_likert_fields("A")
+    assert "sen_a_1" in fields
+    assert "fee_h_4" in fields
+    assert "ce_4" in fields
+    assert len(fields) == 12
+
+
+def test_export_headers_include_scale_fields():
+    header = _build_survey_header()
+    for scale in LIKERT_SCALES:
+        if scale.page.startswith("_"):
+            continue
+        for name in scale.field_names:
+            assert name in header
+    assert "age" in header
+    assert "partner_label_check" in header or "manip_check" in header
+
+
+def test_convert_db_url_adds_driver():
+    raw = "postgresql://user:pass@localhost:5432/db"
+    assert _convert_db_url(raw, "asyncpg") == "postgresql+asyncpg://user:pass@localhost:5432/db"
+    already = "postgresql+psycopg2://user:pass@localhost:5432/db"
+    assert _convert_db_url(already, "asyncpg").startswith("postgresql+asyncpg://")
+
+
+def test_signed_participant_cookie_roundtrip():
+    pid = "11111111-1111-1111-1111-111111111111"
+    signed = sign_participant_id(pid)
+    parsed = parse_participant_cookie(signed)
+    assert str(parsed) == pid
+
+
+def test_tampered_cookie_rejected():
+    pid = "11111111-1111-1111-1111-111111111111"
+    signed = sign_participant_id(pid)
+    tampered = signed[:-1] + ("0" if signed[-1] != "0" else "1")
+    assert parse_participant_cookie(tampered) is None
+
+
+def test_legacy_unsigned_uuid_cookie_still_accepted():
+    pid = "11111111-1111-1111-1111-111111111111"
+    assert str(parse_participant_cookie(pid)) == pid
+
+
+def test_demographics_age_bounds():
+    DemographicsSubmit(age=18)
+    try:
+        DemographicsSubmit(age=17)
+        assert False, "expected validation error"
+    except Exception:
+        pass
+
+
+def test_consent_reuses_session_only_at_consent_step():
+    assert should_reuse_consent_session(_P(Step.consent)) is True
+    assert should_reuse_consent_session(_P(Step.welcome)) is False
+    assert should_reuse_consent_session(_P(Step.priming)) is False
+    assert should_reuse_consent_session(None) is False
