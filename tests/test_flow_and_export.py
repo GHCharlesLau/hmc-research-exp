@@ -66,6 +66,15 @@ def test_convert_db_url_accepts_postgres_scheme_and_sslmode():
     assert "sslmode=" not in url
 
 
+def test_convert_db_url_psycopg2_keeps_sslmode():
+    url = _convert_db_url(
+        "postgresql://user:pass@host/db?sslmode=require",
+        "psycopg2",
+    )
+    assert url.startswith("postgresql+psycopg2://")
+    assert "sslmode=require" in url
+
+
 def test_signed_participant_cookie_roundtrip():
     pid = "11111111-1111-1111-1111-111111111111"
     signed = sign_participant_id(pid)

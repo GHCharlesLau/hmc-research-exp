@@ -1,15 +1,14 @@
-"""Alembic environment configuration for async migrations."""
+"""Alembic environment. Uses sync psycopg2 so Render's sslmode=require URLs work."""
 
-import asyncio
 import os
 from logging.config import fileConfig
+from urllib.parse import urlparse
 
-from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config
+from sqlalchemy import engine_from_config, pool
 from alembic import context
 
+from config import _convert_db_url
 from database import Base
-# Import all models so Alembic can detect them
 from models import (  # noqa: F401
     Participant, ChatRoom, ChatMessage, SurveyResponse,
     ExperimentConfig, ExperimentSession,
@@ -17,19 +16,23 @@ from models import (  # noqa: F401
 
 config = context.config
 
-# Override sqlalchemy.url from env var (Render provides DATABASE_URL).
-# Convert to asyncpg driver for async migrations.
+
+def _redacted_db_location(url: str) -> str:
+    """Host/db only, for error messages. Never includes user/password."""
+    normalized = url.replace("postgresql+psycopg2://", "postgresql://", 1)
+    normalized = normalized.replace("postgresql+asyncpg://", "postgresql://", 1)
+    parsed = urlparse(normalized)
+    host = parsed.hostname or "(no-host)"
+    port = parsed.port or 5432
+    db = (parsed.path or "/").lstrip("/") or "(no-db)"
+    return f"{host}:{port}/{db}"
+
+
 db_url = os.environ.get("DATABASE_URL", "")
 if db_url:
-    if db_url.startswith("postgres://"):
-        db_url = "postgresql://" + db_url[len("postgres://"):]
-    # Strip existing driver prefix if any
-    if db_url.startswith("postgresql+"):
-        db_url = "postgresql://" + db_url.split("://", 1)[1]
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    db_url = db_url.replace("sslmode=require", "ssl=require")
-    db_url = db_url.replace("sslmode=preferred", "ssl=prefer")
-    config.set_main_option("sqlalchemy.url", db_url)
+    db_url = _convert_db_url(db_url, "psycopg2")
+    # ConfigParser interpolates %; Render passwords are often percent-encoded.
+    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -50,27 +53,25 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection):
-    context.configure(connection=connection, target_metadata=target_metadata)
-    with context.begin_transaction():
-        context.run_migrations()
-
-
-async def run_async_migrations() -> None:
-    """Run migrations in 'online' mode with async engine."""
-    connectable = async_engine_from_config(
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode with a sync engine."""
+    connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await connectable.dispose()
-
-
-def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
-    asyncio.run(run_async_migrations())
+    try:
+        with connectable.connect() as connection:
+            context.configure(connection=connection, target_metadata=target_metadata)
+            with context.begin_transaction():
+                context.run_migrations()
+    except OSError as exc:
+        location = _redacted_db_location(db_url or config.get_main_option("sqlalchemy.url") or "")
+        raise ConnectionError(
+            f"Cannot reach Postgres at {location}. On Render, set DATABASE_URL to the "
+            "Postgres service's Internal Connection String (same region as this web "
+            "service), and confirm the database is running (not an expired free instance)."
+        ) from exc
 
 
 if context.is_offline_mode():
