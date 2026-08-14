@@ -9,10 +9,10 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"
+      # Set in Render Dashboard (Internal Connection String).
+      # Do not commit the URL: it contains the database password.
       - key: DATABASE_URL
-        fromDatabase:
-          name: conexperiment-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue
