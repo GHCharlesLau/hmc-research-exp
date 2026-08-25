@@ -300,6 +300,11 @@ async def end_chat(request: Request, db: AsyncSession = Depends(get_db)):
     # deactivation (Redis down, log failure, etc.) don't skip the
     # participant's explicit choice.
 
+    if is_timeout:
+        limits = get_chat_limits()
+        if shared_turns_at_exit < limits.min_turns:
+            participant.is_timeout = True
+
     if is_dropout:
         participant.is_dropout = True
         try:

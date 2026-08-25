@@ -108,3 +108,24 @@ def test_consent_reuses_session_only_at_consent_step():
     assert should_reuse_consent_session(_P(Step.welcome)) is False
     assert should_reuse_consent_session(_P(Step.priming)) is False
     assert should_reuse_consent_session(None) is False
+
+
+def test_duration_over_max_threshold():
+    from services.export import duration_over_max
+
+    assert duration_over_max(None, 600) is False
+    assert duration_over_max(599, 600) is False
+    assert duration_over_max(600, 600) is True
+    assert duration_over_max(900, 600) is True
+    assert duration_over_max("", 600) is False
+
+
+def test_export_quality_filters():
+    from services.export import should_exclude_from_export
+
+    assert should_exclude_from_export(is_timeout=True, exclude_timeout=True) is True
+    assert should_exclude_from_export(is_timeout=True, exclude_timeout=False) is False
+    assert should_exclude_from_export(is_dropout=True, exclude_dropout=True) is True
+    assert should_exclude_from_export(r1_over_max=True, exclude_over_max=True) is True
+    assert should_exclude_from_export(r2_over_max=True, exclude_over_max=True) is True
+    assert should_exclude_from_export(r1_over_max=True, exclude_over_max=False) is False

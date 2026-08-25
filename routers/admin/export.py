@@ -22,16 +22,30 @@ async def export_page(request: Request, _auth=Depends(require_admin)):
 
 
 @router.get("/admin/export/{format_type}")
-async def export_data(request: Request, format_type: str, include_test: bool = False, db: AsyncSession = Depends(get_db)):
+async def export_data(
+    request: Request,
+    format_type: str,
+    include_test: bool = False,
+    exclude_timeout: bool = False,
+    exclude_dropout: bool = False,
+    exclude_over_max: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
     auth_error = await _verify_admin_session(request)
     if auth_error:
         return auth_error
 
+    filters = dict(
+        include_test=include_test,
+        exclude_timeout=exclude_timeout,
+        exclude_dropout=exclude_dropout,
+        exclude_over_max=exclude_over_max,
+    )
     if format_type == "participants":
-        csv_data = await export_participant_table(db, include_test=include_test)
+        csv_data = await export_participant_table(db, **filters)
         filename = "participants.csv"
     elif format_type == "chat":
-        csv_data = await export_chat_messages(db, include_test=include_test)
+        csv_data = await export_chat_messages(db, **filters)
         filename = "chat_messages.csv"
     else:
         return JSONResponse({"detail": "Invalid format"}, status_code=400)

@@ -4,10 +4,19 @@
 <p>Download experiment data in CSV format.</p>
 
 <div style="margin: 12px 0; padding: 10px 16px; background: #fff3cd; border-radius: 6px; display: inline-block;">
-    <label style="cursor: pointer;">
+    <label style="cursor: pointer; display: block; margin-bottom: 6px;">
         <input type="checkbox" id="include-test"> Include test participants
     </label>
-    <span style="font-size: 0.85rem; color: #856404;"> (default: test data excluded)</span>
+    <label style="cursor: pointer; display: block; margin-bottom: 6px;">
+        <input type="checkbox" id="exclude-timeout"> Exclude page/chat timeouts (<code>is_timeout</code>)
+    </label>
+    <label style="cursor: pointer; display: block; margin-bottom: 6px;">
+        <input type="checkbox" id="exclude-dropout"> Exclude dropouts (<code>is_dropout</code>)
+    </label>
+    <label style="cursor: pointer; display: block;">
+        <input type="checkbox" id="exclude-over-max"> Exclude chats that reached max duration
+    </label>
+    <span style="font-size: 0.85rem; color: #856404;"> Default: test data excluded; timeout/dropout kept so you can inspect them.</span>
 </div>
 
 <div style="margin: 20px 0;">
@@ -25,7 +34,16 @@
 <script>
 async function exportData(format) {
     const includeTest = document.getElementById('include-test').checked;
-    const resp = await fetch(`/admin/export/${format}?include_test=${includeTest}`);
+    const excludeTimeout = document.getElementById('exclude-timeout').checked;
+    const excludeDropout = document.getElementById('exclude-dropout').checked;
+    const excludeOverMax = document.getElementById('exclude-over-max').checked;
+    const params = new URLSearchParams({
+        include_test: includeTest,
+        exclude_timeout: excludeTimeout,
+        exclude_dropout: excludeDropout,
+        exclude_over_max: excludeOverMax,
+    });
+    const resp = await fetch(`/admin/export/${format}?${params}`);
     if (!resp.ok) {
         alert('Export failed');
         return;

@@ -126,3 +126,23 @@ def test_queue_key_requires_task_type():
     with pytest.raises(ValueError):
         _queue_key("", 1)
     assert _queue_key("emotionTask", 2) == "matchmaking:queue:emotionTask:round_2"
+
+
+def test_should_remove_from_queue_rules():
+    from models.participant import Step
+    from services.monitoring import should_remove_from_queue
+
+    class _Q:
+        def __init__(self, step=Step.chat_r1, timeout=False, dropout=False, finished=False):
+            self.current_step = step
+            self.is_timeout = timeout
+            self.is_dropout = dropout
+            self.is_finished = finished
+
+    assert should_remove_from_queue(None) is True
+    assert should_remove_from_queue(_Q(timeout=True)) is True
+    assert should_remove_from_queue(_Q(dropout=True)) is True
+    assert should_remove_from_queue(_Q(finished=True)) is True
+    assert should_remove_from_queue(_Q(step=Step.instructions_r1)) is True
+    assert should_remove_from_queue(_Q(step=Step.chat_r1), queued_seconds=10) is False
+    assert should_remove_from_queue(_Q(step=Step.chat_r1), queued_seconds=200, hhc_timeout=120) is True

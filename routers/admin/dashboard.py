@@ -81,6 +81,8 @@ async def _get_dashboard_stats(db: AsyncSession) -> dict:
             room.is_active = False
             room.ended_at = now
             room.duration_seconds = (now - room.started_at).total_seconds()
+            if room.participant is not None:
+                room.participant.is_timeout = True
             stale_count += 1
     if stale_count > 0:
         await db.commit()

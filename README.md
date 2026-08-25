@@ -10,7 +10,7 @@ Built with Python / FastAPI / WebSocket to replace an oTree-based system that ha
 - **Two-Round Conversation** with deception manipulation and identity conditions
 - **Real-Time HHC Matchmaking** via Redis Sorted Sets with 120s timeout fallback to AI
 - **LLM-Powered Chat** via litellm (OpenAI, Anthropic, custom endpoints) with concurrency control
-- **4-Page Survey System** with 80+ Likert items, scale registry, and automatic CSV export
+- **4-Page Survey System** with a scale registry (Page C: 7 outcome scales / 25 items) and automatic CSV export
 - **Admin Dashboard** with real-time monitoring, LLM stats, chat preview, and test tools
 - **Prolific Integration** -- URL params, duplicate detection, completion callbacks
 
@@ -18,7 +18,7 @@ Built with Python / FastAPI / WebSocket to replace an oTree-based system that ha
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.11+, FastAPI, SQLAlchemy (async) |
+| Backend | Python 3.12, FastAPI, SQLAlchemy (async) |
 | Frontend | Jinja2 templates, Alpine.js, vanilla WebSocket |
 | Database | PostgreSQL 16 |
 | Cache/Queue | Redis 7 |
@@ -29,7 +29,7 @@ Built with Python / FastAPI / WebSocket to replace an oTree-based system that ha
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12 (3.11+ may work locally; Render/CI use 3.12)
 - Docker & Docker Compose (for local PostgreSQL + Redis)
 - An OpenAI API key (or compatible LLM endpoint)
 
@@ -39,6 +39,7 @@ Built with Python / FastAPI / WebSocket to replace an oTree-based system that ha
 git clone https://github.com/GHCharlesLau/hmc-research-exp.git
 cd hmc-research-exp
 pip install -r requirements.txt
+pip install -r requirements-dev.txt   # pytest, for running tests
 ```
 
 ### 2. Start Infrastructure
@@ -106,6 +107,13 @@ Access:
 - Experiment: http://localhost:8000
 - Admin Dashboard: http://localhost:8000/admin/login
 - API Docs: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+
+### Run tests
+
+```bash
+pytest -q
+```
 
 ## Experiment Flow
 
@@ -125,10 +133,10 @@ Round 1 Instructions --> Waiting Room --> Chat (HHC or HMC)
 Round 2 Instructions --> Waiting Room --> Chat (all try HHC)
   |
   v
-Survey (4 pages: 12 + 6 + 80 + 9 items)
+Survey (4 pages: 12 + 6 + 25 + 9 items)
   |   Page A: Partner perceptions (12 items)
   |   Page B: Attention check + AI literacy (6 items)
-  |   Page C: Conversation outcomes (80 items)
+  |   Page C: Conversation outcomes (25 items)
   |   Demographics: Age, gender, etc. + Religiosity (9 items)
   v
 Payment (Prolific completion code)
@@ -148,47 +156,33 @@ Payment (Prolific completion code)
 
 ```
 ConExperiment2.0/
-├── main.py                  # FastAPI entry point + CLI (typer)
+├── main.py                  # FastAPI entry + CLI (typer)
 ├── config.py                # Settings from environment variables
 ├── database.py              # SQLAlchemy async engine + session
-├── docker-compose.yml       # Local dev: PostgreSQL 16 + Redis 7
-├── alembic.ini              # Database migration config
+├── docker-compose.yml       # Local PostgreSQL 16 + Redis 7
+├── render.yaml              # Render Blueprint (web + Redis; DATABASE_URL set in Dashboard)
+├── start.sh                 # Optional start script (migrations + uvicorn)
+├── alembic.ini
 ├── requirements.txt
-├── .env.example             # Environment variable template
+├── requirements-dev.txt     # pytest for local/CI
+├── pytest.ini
+├── .env.example
+├── .github/workflows/ci.yml
 │
-├── models/                  # SQLAlchemy ORM models
-│   ├── participant.py       # Participant + Step enum
-│   ├── chat.py              # ChatRoom + ChatMessage
-│   ├── survey.py            # SurveyResponse (all Likert + demographics)
-│   └── experiment.py        # ExperimentSession + ExperimentConfig
-│
-├── routers/                 # FastAPI route handlers
+├── models/                  # SQLAlchemy ORM
+├── schemas/                 # Pydantic request/response models
+├── dependencies/            # Shared participant session helpers
+├── routers/
 │   ├── experiment.py        # Consent, welcome, priming, instructions, payment
-│   ├── survey.py            # 4 survey pages (A/B/C/demographics)
-│   ├── chat.py              # Chat page + HTTP endpoints
-│   ├── admin.py             # Admin dashboard + export + test tools
-│   ├── ws.py                # WebSocket (chat + matchmaking)
-│   └── errors.py            # 404/500 error pages
-│
-├── services/                # Business logic
-│   ├── scales.py            # Scale registry (LikertScale + CustomItem)
-│   ├── matchmaking.py       # HHC pairing + Redis queues
-│   ├── llm.py               # LLM service (litellm + semaphore)
-│   ├── monitoring.py        # Event logging + stuck detection
-│   ├── export.py            # CSV export (2 formats)
-│   ├── prolific.py          # Prolific integration
-│   └── redis_pubsub.py      # Redis Pub/Sub for cross-process broadcast
-│
-├── templates/               # Jinja2 HTML templates
-│   ├── macros/likert.html   # Reusable Likert scale macros
-│   ├── *.html               # 14 experiment pages
-│   └── admin/               # 7 admin pages
-│
-├── static/
-│   ├── css/main.css         # Complete design system
-│   ├── js/chat.js           # WebSocket client
-│   └── avatar/              # Avatar images
-│
+│   ├── survey.py            # Survey pages A/B/C + demographics
+│   ├── chat.py              # Chat page + HTTP + chat WebSocket
+│   ├── ws.py                # Matchmaking WebSocket
+│   ├── errors.py
+│   └── admin/               # Login, dashboard, participants, export, config, test tools
+├── services/                # Business logic (matchmaking, LLM, export, Prolific, …)
+├── templates/               # Jinja2 experiment + admin pages
+├── static/                  # CSS, chat.js, avatars
+├── tests/
 └── alembic/                 # Database migrations
 ```
 
@@ -233,15 +227,15 @@ The repo includes a `render.yaml` Blueprint file. In Render Dashboard:
 
 1. Click **"New" -> "Blueprint"**
 2. Connect your GitHub repo (`GHCharlesLau/hmc-research-exp`)
-3. Render auto-creates 3 services: Web Service + PostgreSQL + Redis
-4. Fill in secret env vars in Dashboard -> Environment (see table below)
-5. Deploy
+3. Render creates the web service and Redis. Create a **Starter** Postgres instance (free Postgres expires) in the **same region** as the web service.
+4. Set `DATABASE_URL` to that database's **Internal Connection String**. Fill in the other secret env vars (see table below). Do not rotate `ENCRYPTION_KEY` after data exists.
+5. Deploy. Health check: `https://<your-service>.onrender.com/health`
 
 ### Option B: Manual Setup
 
 1. **Web Service**: Connect your GitHub repo
    - Build Command: `pip install -r requirements.txt`
-   - Start Command: `bash start.sh` (runs `alembic upgrade head` then `uvicorn`)
+   - Start Command: `PYTHONPATH=. alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1` (or `bash start.sh`)
    - **Workers MUST be 1** (WebSocket constraint)
 
 2. **PostgreSQL**: Create managed PostgreSQL database (Starter plan)
@@ -254,7 +248,7 @@ Set in Render Dashboard > Environment:
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `DATABASE_URL` | Auto-injected | Render PostgreSQL internal URL (`postgresql://`, auto-converted to `asyncpg`) |
+| `DATABASE_URL` | Manual | Postgres **Internal** URL (`postgresql://`, auto-converted to asyncpg / psycopg2) |
 | `REDIS_URL` | Auto-injected | Render Redis internal URL |
 | `SECRET_KEY` | Manual | Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `LLM_API_BASE` | Manual | Primary LLM gateway URL (e.g. `https://api.n1n.ai/v1`) |
@@ -294,11 +288,11 @@ Two CSV formats available via Admin Dashboard > Data Export:
 1. **Participant Wide Table** -- one row per participant with all survey responses, demographics, chat statistics
 2. **Chat Messages Long Table** -- one row per message with sender, text, timestamps
 
-Test participants are excluded by default; toggle "Include test participants" to include them.
+Test participants are excluded by default; toggle "Include test participants" to include them. Optional checkboxes exclude page/chat timeouts (`is_timeout`), dropouts (`is_dropout`), and chats that reached max duration (`chat_r1_over_max` / `chat_r2_over_max`).
 
 ## Security
 
-- Prolific IDs encrypted at rest (Fernet)
+- Prolific IDs encrypted at rest (Fernet) plus a keyed HMAC hash for duplicate checks
 - Chat messages sanitized (bleach) to prevent XSS
 - Admin panel protected by single-password session auth (Redis, 24h TTL)
 - WebSocket connections authenticated via participant token
@@ -311,6 +305,9 @@ Run `alembic upgrade head` to apply database migrations.
 
 **Q: Redis connection failed?**
 Check Docker: `docker-compose ps` and `docker-compose restart redis`.
+
+**Q: Welcome page says "Unable to save your Prolific ID"?**
+Set a valid Fernet `ENCRYPTION_KEY` on the server (copy from local `.env`; do not generate a new one if data already exists). A fake 24-character alphanumeric ID is enough for testing; Prolific is not called to verify it.
 
 **Q: LLM not responding?**
 Check `LLM_API_BASE` and `N1N_API_KEY` (or `OPENAI_API_KEY`) in `.env`. The system auto-falls back to the backup provider (`LLM_BACKUP_API_BASE`) if configured.

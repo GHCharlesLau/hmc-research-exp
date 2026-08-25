@@ -97,6 +97,28 @@ async def dequeue_match(participant_id: str, round_number: int, task_type: str) 
     await r.zrem(key, participant_id)
 
 
+async def remove_from_all_queues(participant_id: str, task_type: str) -> None:
+    """Remove a participant from both round queues for their task type."""
+    pid = str(participant_id)
+    for round_number in (1, 2):
+        try:
+            await dequeue_match(pid, round_number, task_type)
+        except Exception as exc:
+            logger.warning(
+                "Failed to dequeue %s from round %s (%s): %s",
+                pid, round_number, task_type, exc,
+            )
+
+
+async def queue_join_score(
+    participant_id: str, round_number: int, task_type: str,
+) -> float | None:
+    """Return the ZSET score (enqueue unix time) or None if not queued."""
+    r = await get_redis()
+    score = await r.zscore(_queue_key(task_type, round_number), str(participant_id))
+    return float(score) if score is not None else None
+
+
 async def try_match(round_number: int, task_type: str) -> tuple[str, str] | None:
     """Atomically pair the two earliest participants in the queue.
 

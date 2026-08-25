@@ -1,6 +1,7 @@
 """Monitoring service: event logging, step duration tracking, stuck participant detection."""
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -105,8 +106,96 @@ async def get_step_entry_time(participant_id, step: str) -> datetime | None:
     return None
 
 
+_CHAT_STEPS = frozenset({"chat_r1", "chat_r2"})
+
+
+def should_remove_from_queue(
+    participant: Participant | None,
+    *,
+    queued_seconds: float | None = None,
+    hhc_timeout: int = 120,
+) -> bool:
+    """True when this queue member should not stay in matchmaking."""
+    if participant is None:
+        return True
+    if participant.is_timeout or participant.is_dropout or participant.is_finished:
+        return True
+    step = getattr(participant.current_step, "value", participant.current_step)
+    if step not in _CHAT_STEPS:
+        return True
+    if queued_seconds is not None and queued_seconds > hhc_timeout + 60:
+        return True
+    return False
+
+
+async def _remove_from_matchmaking(participant: Participant) -> None:
+    """Drop a stuck/timed-out participant from both matchmaking queues."""
+    from services import matchmaking
+
+    task_type = getattr(participant.task_type, "value", participant.task_type)
+    try:
+        await matchmaking.remove_from_all_queues(str(participant.id), str(task_type))
+    except Exception as exc:
+        logger.warning(
+            "Failed to dequeue stuck participant %s: %s",
+            participant.display_id, exc,
+        )
+
+
+async def sweep_stale_queue_members(db: AsyncSession) -> int:
+    """Remove Redis queue members who timed out, dropped, or left the chat step."""
+    from uuid import UUID
+
+    from services import matchmaking
+    from services.chat_settings import get_chat_limits
+
+    hhc_timeout = get_chat_limits().hhc_timeout
+    removed = 0
+    try:
+        queues = await matchmaking.get_all_queue_members()
+    except Exception as exc:
+        logger.warning("Failed to list matchmaking queues: %s", exc)
+        return 0
+
+    now = time.time()
+    for queue_name, members in queues.items():
+        if ":round_" not in queue_name:
+            continue
+        task_type, round_part = queue_name.rsplit(":round_", 1)
+        try:
+            round_number = int(round_part)
+        except ValueError:
+            continue
+        for pid in members:
+            participant = None
+            try:
+                participant = await db.get(Participant, UUID(pid))
+            except Exception:
+                participant = None
+            queued_seconds = None
+            try:
+                score = await matchmaking.queue_join_score(pid, round_number, task_type)
+                if score is not None:
+                    queued_seconds = now - score
+            except Exception:
+                queued_seconds = None
+            if should_remove_from_queue(
+                participant, queued_seconds=queued_seconds, hhc_timeout=hhc_timeout,
+            ):
+                try:
+                    await matchmaking.dequeue_match(pid, round_number, task_type)
+                    removed += 1
+                except Exception as exc:
+                    logger.warning("Failed to dequeue stale queue member %s: %s", pid, exc)
+    return removed
+
+
 async def detect_stuck_participants(db: AsyncSession) -> list[dict]:
-    """Find participants who have exceeded time limits on their current step."""
+    """Find participants who have exceeded time limits on their current step.
+
+    Marks ``is_timeout`` and removes them from the matchmaking queues so they
+    cannot be paired after going idle on a page.
+    """
     result = await db.execute(
         select(Participant).where(
             Participant.is_finished == False,
@@ -132,6 +221,7 @@ async def detect_stuck_participants(db: AsyncSession) -> list[dict]:
         if elapsed > limit:
             if not p.is_timeout:
                 p.is_timeout = True
+            await _remove_from_matchmaking(p)
             stuck.append({
                 "display_id": p.display_id,
                 "step": step,
@@ -139,6 +229,10 @@ async def detect_stuck_participants(db: AsyncSession) -> list[dict]:
                 "limit_seconds": limit,
                 "over_by_seconds": round(elapsed - limit),
             })
-    if any(item for item in stuck):
+    try:
+        await sweep_stale_queue_members(db)
+    except Exception as exc:
+        logger.warning("Matchmaking queue sweep failed: %s", exc)
+    if stuck:
         await db.commit()
     return stuck

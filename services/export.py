@@ -11,6 +11,7 @@ from models.participant import Participant
 from models.chat import ChatRoom, ChatMessage, SenderRole
 from models.survey import SurveyResponse
 from services.prolific import decrypt_prolific_id
+from services.chat_settings import get_chat_limits
 from services.scales import (
     LIKERT_SCALES, CUSTOM_ITEMS, CUSTOM_ITEM_EXPORT_MAP,
     get_total_likert_count, DEMOGRAPHICS_STRUCTURAL_FIELDS,
@@ -20,6 +21,36 @@ logger = logging.getLogger(__name__)
 
 # Total survey fields: Likert scales + custom items + structural demographics
 SURVEY_FIELD_COUNT = get_total_likert_count() + len(CUSTOM_ITEMS) + DEMOGRAPHICS_STRUCTURAL_FIELDS
+
+
+def duration_over_max(duration_seconds: float | int | None, max_duration: int) -> bool:
+    """True when a chat lasted at least the configured max duration."""
+    if duration_seconds is None:
+        return False
+    try:
+        return float(duration_seconds) >= float(max_duration)
+    except (TypeError, ValueError):
+        return False
+
+
+def should_exclude_from_export(
+    *,
+    is_timeout: bool = False,
+    is_dropout: bool = False,
+    r1_over_max: bool = False,
+    r2_over_max: bool = False,
+    exclude_timeout: bool = False,
+    exclude_dropout: bool = False,
+    exclude_over_max: bool = False,
+) -> bool:
+    """True when this participant should be omitted from a filtered export."""
+    if exclude_timeout and is_timeout:
+        return True
+    if exclude_dropout and is_dropout:
+        return True
+    if exclude_over_max and (r1_over_max or r2_over_max):
+        return True
+    return False
 
 
 async def _build_participant_lookup(db: AsyncSession) -> dict:
@@ -102,11 +133,21 @@ def _build_survey_row(sr: SurveyResponse) -> list:
     return row
 
 
-async def export_participant_table(db: AsyncSession, *, include_test: bool = False) -> str:
+async def export_participant_table(
+    db: AsyncSession,
+    *,
+    include_test: bool = False,
+    exclude_timeout: bool = False,
+    exclude_dropout: bool = False,
+    exclude_over_max: bool = False,
+) -> str:
     """Export one row per participant (wide format).
 
     Args:
         include_test: If False (default), exclude test participants (is_test=True).
+        exclude_timeout: Drop participants flagged is_timeout (page idle or incomplete timed-out chat).
+        exclude_dropout: Drop participants who chose to leave after a failed chat.
+        exclude_over_max: Drop participants whose chat duration reached max_duration.
     """
     query = (
         select(Participant)
@@ -120,6 +161,7 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
 
     # Build lookup for partner resolution
     participant_lookup = await _build_participant_lookup(db)
+    max_duration = get_chat_limits().max_duration
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -131,7 +173,10 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
         "current_round", "hhc_fallback", "is_finished", "is_timeout", "is_dropout",
     ]
     header += _build_survey_header()
-    header += ["chat_r1_turns", "chat_r1_duration", "chat_r2_turns", "chat_r2_duration"]
+    header += [
+        "chat_r1_turns", "chat_r1_duration", "chat_r1_over_max",
+        "chat_r2_turns", "chat_r2_duration", "chat_r2_over_max",
+    ]
     header += ["created_at"]
     writer.writerow(header)
 
@@ -161,6 +206,21 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
                 chat_stats[f"r{rn}_turns"] = complete_turns
                 chat_stats[f"r{rn}_duration"] = room.duration_seconds or 0
 
+        r1_duration = chat_stats.get("r1_duration", "")
+        r2_duration = chat_stats.get("r2_duration", "")
+        r1_over = duration_over_max(r1_duration or None, max_duration)
+        r2_over = duration_over_max(r2_duration or None, max_duration)
+        if should_exclude_from_export(
+            is_timeout=p.is_timeout,
+            is_dropout=p.is_dropout,
+            r1_over_max=r1_over,
+            r2_over_max=r2_over,
+            exclude_timeout=exclude_timeout,
+            exclude_dropout=exclude_dropout,
+            exclude_over_max=exclude_over_max,
+        ):
+            continue
+
         row = [
             p.display_id, prolific_id, p.task_type.value, p.partnership.value,
             p.partner_label.value, partner_display_id,
@@ -174,8 +234,8 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
             row += [""] * SURVEY_FIELD_COUNT
 
         row += [
-            chat_stats.get("r1_turns", ""), chat_stats.get("r1_duration", ""),
-            chat_stats.get("r2_turns", ""), chat_stats.get("r2_duration", ""),
+            chat_stats.get("r1_turns", ""), r1_duration, int(r1_over) if r1_duration != "" else "",
+            chat_stats.get("r2_turns", ""), r2_duration, int(r2_over) if r2_duration != "" else "",
         ]
         row += [p.created_at.isoformat() if p.created_at else ""]
         writer.writerow(row)
@@ -183,7 +243,14 @@ async def export_participant_table(db: AsyncSession, *, include_test: bool = Fal
     return output.getvalue()
 
 
-async def export_chat_messages(db: AsyncSession, *, include_test: bool = False) -> str:
+async def export_chat_messages(
+    db: AsyncSession,
+    *,
+    include_test: bool = False,
+    exclude_timeout: bool = False,
+    exclude_dropout: bool = False,
+    exclude_over_max: bool = False,
+) -> str:
     """Export one row per chat message (long format).
 
     Args:
@@ -208,6 +275,7 @@ async def export_chat_messages(db: AsyncSession, *, include_test: bool = False) 
 
     # Build lookup for partner resolution
     participant_lookup = await _build_participant_lookup(db)
+    max_duration = get_chat_limits().max_duration
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -237,6 +305,17 @@ async def export_chat_messages(db: AsyncSession, *, include_test: bool = False) 
 
         room = msg.chat_room
         participant = room.participant
+        room_over_max = duration_over_max(room.duration_seconds, max_duration)
+        if should_exclude_from_export(
+            is_timeout=participant.is_timeout,
+            is_dropout=participant.is_dropout,
+            r1_over_max=room_over_max,
+            r2_over_max=False,
+            exclude_timeout=exclude_timeout,
+            exclude_dropout=exclude_dropout,
+            exclude_over_max=exclude_over_max,
+        ):
+            continue
 
         partner_display_id = ""
         if participant.partner_id and participant.partner_id in participant_lookup:

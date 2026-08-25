@@ -1,5 +1,7 @@
 # Environment (contains API keys and secrets)
 .env
+.env.local
+.env.*.local
 
 # Python
 __pycache__/
@@ -10,6 +12,13 @@ build/
 .venv/
 venv/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+.hypothesis/
 
 # Database
 pgdata/
@@ -45,3 +54,9 @@ cookies.txt
 
 # Archive (old/unused code kept for reference)
 archive/
+
+# Editor / agent leftovers
+.cursor/
+*.bak
+*.orig
+*.tmp

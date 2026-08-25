@@ -226,6 +226,8 @@ uvicorn main:app --reload --port 8000
 - 包含：参与者 ID、房间 ID、轮次、发送者角色、消息文本、时间戳
 
 > **v1.5 更新**: 导出默认排除测试被试（`is_test=True`）。勾选 "Include test participants" 可包含测试数据。
+>
+> **数据质量筛选**: 宽表新增 `chat_r1_over_max` / `chat_r2_over_max`（聊天时长是否达到 `max_duration`）。可勾选排除：页面停留超时（`is_timeout`）、中途退出（`is_dropout`）、聊天达到最长时长。未满最少轮数就超时的聊天会标 `is_timeout=True`。页面停留超时的人会被移出配对队列。
 
 #### 2.6 Test Tools（测试工具）— v1.5 新增，v1.7 优化
 
@@ -604,6 +606,8 @@ Two CSV formats:
 2. **Chat Messages Long Table** (`chat_messages.csv`): One row per message with sender, text, timestamp.
 
 > **v1.5 update**: Exports default to excluding test participants (`is_test=True`). Check "Include test participants" to include them.
+>
+> **Quality filters**: The wide table adds `chat_r1_over_max` / `chat_r2_over_max`. Checkboxes can exclude page/chat timeouts (`is_timeout`), dropouts (`is_dropout`), and chats that reached max duration. Incomplete chats that hit the timer are flagged `is_timeout=True`. Idle participants are removed from the matchmaking queue.
 
 #### 2.6 Test Tools — v1.5 new, v1.7 enhanced
 
