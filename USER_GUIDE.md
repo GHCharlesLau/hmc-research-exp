@@ -1,28 +1,25 @@
 # USER_GUIDE.md — ConExperiment 2.0 使用指南 / User Guide
 
-**版本**: v2.3.0 (2026-05-25)
+**版本**: v2.5.1 (2026-08)
 
 ### 版本更新记录
 
 | 版本 | 更新内容 |
 |------|---------|
-| v2.3.0 | **问卷 Scale Registry 重构 + Outcome Variables 页面 + UI 优化**：新增 `services/scales.py` 量表注册表 + `templates/macros/likert.html` Jinja2 宏；新增 Survey Page C 包含 25 个 outcome variable 量表（80 题）；修复 PostgreSQL ENUM 缺失 `survey_c` 导致的 500 错误；`display_title` 字段隐藏学术变量名（参与者看不到 "Agency" 等术语）；Likert 量表 CSS 重写（等间距 + 选中高亮 + 锚定文字） |
-| v2.2.0 | **HHC Turn 计数修复 + 欺骗泄露修复**：HHC 聊天 turn 改为 per-participant 计数（`min(A_count, B_count)`，每人至少发 1 条才算 1 turn）；对方离开聊天时 `partner_left` 通知不再暴露真实身份（使用欺骗条件对应的显示名） |
-| v2.1.0 | **HHC DB session 修复 + generation counter 修复**：`listen_redis` 使用独立 DB session 防止 cross-contamination；BUG-21 `.decode()` 修复使 stale handler 检测恢复生效；诊断日志增强 |
-| v2.0.x | **Bug 修复轮次**：HMC 虚假配对错误、HHC max-turns 通知横幅、R2 HHC 真实匹配显示、JS 语法错误（`tojson` 过滤） |
-| v2.0.0 | **监控增强**：参与者恢复链接（`/resume/{token}`）、Dashboard 进度条、步骤停留时长追踪、实时事件流、LLM 调用监控（成功率/延迟）、聊天内容实时预览、卡住参与者自动检测、参与者详情页 |
-| v1.8.0 | **UI 优化 + 安全修复**：聊天框上方添加对话说明提醒条；对方头像逻辑更新（human 标签使用用户自己的 avatar）；Instructions 页面移除头像显示；HHC 超时回退时 partnership 改为 HMC；**Admin 认证修复**（未登录无法访问管理页面）；启动时显示 Admin dashboard 链接 |
-| v1.8.0 | **UI 优化 + 安全修复**：聊天框上方添加对话说明提醒条；对方头像逻辑更新（human 标签使用用户自己的 avatar）；Instructions 页面移除头像显示；HHC 超时回退时 partnership 改为 HMC；**Admin 认证修复**（未登录无法访问管理页面）；启动时显示 Admin dashboard 链接 |
-| v1.7.0 | **Admin 界面优化 + HHC 聊天修复**：Dashboard 5s 自动刷新、活跃聊天室实时监控、步骤分布表；Test Tools 快捷操作栏（一键创建、配对流程测试）、测试被试仪表板（内联 Open/Next/Delete 操作）；**HHC 聊天消息不显示修复**（redis-py 5.x API 兼容 + 频道名前缀 + sender_role 翻转） |
-| v1.6.0 | **配对机制重大修复**：第一轮 HMC 虚假等候室、第二轮统一真人配对尝试、第二轮回退强制显示 BOT 身份、WebSocket 断线竞态修复、display_id 生成修复（避免删除后重复） |
-| v1.5.1 | 测试数据管理：删除单个测试被试、一键清理所有测试数据、测试数据计数显示 |
-| v1.5.0 | 测试与演示工具：Demo Mode 配置、Admin Test Tools 页面（创建测试被试、一键 HHC 配对、步骤控制、队列查看）、数据导出自动过滤测试数据、is_test 标记 |
-| v1.4.0 | 综合测试修复：HHC 断连队列清理、三人竞争孤儿修复、LLM 超时增至 60s、Survey 范围校验、完成后重定向 payment、服务端 min_turns、WebSocket JSON 容错、HHC fallback 标签统一 |
-| v1.3.1 | 修复：Priming 页面恢复任务图片；Chat 结束后 POST 导航修复（405 错误）；Admin 侧栏留白修复 |
-| v1.3.0 | 首轮测试修复：Admin 登录、Consent 对齐 v1、Avatar 选择反馈、Priming 页面、HHC 匹配机制 |
-| v1.2.0 | 预部署配置：备用 LLM provider、内置默认 prompt、导入修复、.env 预配置 |
-| v1.1.0 | 基础设施优化：Redis 连接池、原子化匹配、Pub/Sub 重连、Prolific 回调优化 |
-| v1.0.0 | 初始版本 |
+| v2.5.1 | **运维与文档**：页面停留超时自动出队；导出增加 `is_timeout` / `is_dropout` / `chat_r*_over_max` 筛选；Welcome 加密失败不再 500；Test Tools 按条件创建后 Consent 不再重新抽组；两轮保持同一 `task_type` |
+| v2.5.0 | **Page C 精简为 7 个 outcome scales（25 题）**；Prolific HMAC 去重 + 24 位格式校验；条件分配加锁；R1→R2 chatbot 上下文注入；R2 超时不改写 `partnership`（ITT）；`force_chatbot` 从 DB 状态派生 |
+| v2.4.0 | 聊天超时 retry/dropout 对话框；R2 排除 R1 partner；LLM 回复长度控制 |
+| v2.3.0 | **问卷 Scale Registry**：`services/scales.py` + Likert 宏；新增 Survey Page C；PostgreSQL ENUM 补 `survey_c`；`display_title` 隐藏学术变量名 |
+| v2.2.0 | **HHC Turn 计数修复 + 欺骗泄露修复**：turn 为 `min(A_count, B_count)`；`partner_left` 使用欺骗条件显示名 |
+| v2.1.0 | **HHC DB session 修复 + generation counter 修复**：`listen_redis` 使用独立 DB session |
+| v2.0.x | HMC 虚假配对、HHC max-turns 横幅、R2 显示、`tojson` JS 转义 |
+| v2.0.0 | 监控增强：Resume URL、Dashboard 进度条、事件流、LLM 统计、卡住检测、参与者详情 |
+| v1.8.0 | UI 提醒条、头像逻辑、Instructions 去头像、R1 超时改 `partnership`、Admin 认证加固 |
+| v1.7.0 | Dashboard 5s 刷新、Test Tools 快捷栏、HHC 消息显示修复 |
+| v1.6.0 | R1 HMC 虚假等候室、R2 全员尝试真人配对、R2 回退强制 BOT |
+| v1.5.1 | 测试数据删除与清理 |
+| v1.5.0 | Demo Mode、Test Tools、导出过滤 `is_test` |
+| v1.0.0–v1.4.0 | 初始平台与首轮测试修复（见 Git 历史） |
 
 ---
 
@@ -58,12 +55,12 @@ cp .env.example .env
 
 # 编辑 .env，填写以下必要配置：
 # - SECRET_KEY: 随机字符串（可用 python -c "import secrets; print(secrets.token_urlsafe(32))"）
-# - OPENAI_API_KEY: OpenAI API 密钥（主 LLM provider）
-# - ENCRYPTION_KEY: Fernet 密钥（见下方生成方法）
+# - ENCRYPTION_KEY: Fernet 密钥（Welcome 页必填；缺失会导致无法保存 Prolific ID）
 # - ADMIN_PASSWORD_HASH: 管理员密码的 SHA256 哈希（见下方生成方法）
+# - 主 LLM：N1N_API_KEY + LLM_API_BASE（网关），或直接填 OPENAI_API_KEY
 #
 # 可选配置（备用 LLM provider，主 provider 失败时自动切换）：
-# - LLM_BACKUP_API_BASE: 备用 API 地址（如 https://api.chatanywhere.tech/v1）
+# - LLM_BACKUP_API_BASE: 备用 API 地址
 # - LLM_BACKUP_API_KEY: 备用 API 密钥
 # - LLM_BACKUP_MODEL: 备用模型名称（默认 gpt-4o-mini）
 ```
@@ -81,32 +78,27 @@ password = "your-admin-password"
 print(hashlib.sha256(password.encode()).hexdigest())
 ```
 
-#### 1.4 替换占位头像
+#### 1.4 头像与任务图片
 
-```
-static/avatar/ 目录中的文件是 SVG 占位图，需要替换为真实图片：
+`static/avatar/` 已包含正式 PNG/JPG，无需再从 v1 复制：
 
-需替换的文件（从 v1 项目 ../ConExperiment/_static/avatar/ 复制）：
-- myBot.png → AI 对话伙伴头像
-- fox.png → Tommy（伪装人类）头像，同时也是可选参与者头像
-- lion.png → 可选参与者头像
-- rabbit.png → 可选参与者头像
-- tiger.png → 可选参与者头像
-
-从 v1 项目 ../ConExperiment/_static/task1/img/ 复制：
-- img_sad.png → 情绪任务热身图片
-- img_box.jpg → 功能任务热身图片
-```
+| 文件 | 用途 |
+|------|------|
+| `myBot.png` | AI 对话伙伴（MyBot）头像，参与者不可选 |
+| `fox.png` | Tommy（伪装人类）头像；也可作为参与者头像 |
+| `lion.png` / `rabbit.png` / `tiger.png` | 参与者可选头像 |
+| `img_sad.png` | 情绪任务热身图 |
+| `img_box.jpg` | 功能任务热身图 |
 
 #### 1.5 数据库迁移
 
-```bash
-# 生成迁移脚本
-alembic revision --autogenerate -m "initial"
+仓库已包含完整迁移链。本地或新环境只需执行：
 
-# 执行迁移
+```bash
 alembic upgrade head
 ```
+
+不要对已有库再跑 `alembic revision --autogenerate -m "initial"`，那会生成重复的初始迁移。只有改了模型（例如新增量表列）才需要 `alembic revision --autogenerate -m "描述"`。
 
 #### 1.6 启动开发服务器
 
@@ -132,8 +124,15 @@ uvicorn main:app --reload --port 8000
 
 访问：
 - 实验入口：http://localhost:8000
+- 健康检查：http://localhost:8000/health
 - API 文档：http://localhost:8000/docs
 - 管理后台：http://localhost:8000/admin/login
+
+运行测试（需先 `pip install -r requirements-dev.txt`）：
+
+```bash
+pytest -q
+```
 
 #### 1.7 首次运行配置
 
@@ -144,6 +143,98 @@ uvicorn main:app --reload --port 8000
 1. **登录管理后台** → `/admin/login`（使用 .env 中的管理员密码）
 2. **（可选）自定义 LLM 提示词** → Config 页面中修改 4 个 CHARACTER_PROMPT（A/Afake/B/Bfake），留空则使用内置默认值
 3. **确认模型配置** → `default_model` 默认为 `gpt-4o-mini`，可修改为 `claude-haiku-4-5` 等
+
+#### 1.8 项目结构
+
+每个目录/文件只做一件事：入口、配置、数据、路由、业务逻辑、页面、静态资源、测试、部署。
+
+```
+ConExperiment2.0/
+├── main.py                  # FastAPI 入口：注册路由、CORS、lifespan、CLI（typer）
+├── config.py                # 从环境变量读取设置（聊天轮次、LLM、Demo 模式等）
+├── database.py              # SQLAlchemy 异步引擎与会话（连接池 20+30）
+├── docker-compose.yml       # 本地 PostgreSQL + Redis
+├── render.yaml              # Render Blueprint（Web + Redis；DATABASE_URL 在 Dashboard 手动填）
+├── start.sh                 # 部署启动脚本：迁移 + uvicorn --workers 1
+├── alembic.ini / alembic/   # 数据库迁移
+├── requirements.txt         # 生产依赖
+├── requirements-dev.txt     # pytest 等开发依赖
+├── pytest.ini
+├── .env.example             # 环境变量模板（不要提交真实 .env）
+├── .github/workflows/ci.yml # CI：pytest
+│
+├── models/                  # SQLAlchemy 表结构（参与者、聊天、问卷、事件日志）
+├── schemas/                 # Pydantic 请求/响应校验
+├── dependencies/            # 共享依赖（从 Cookie 取参与者会话）
+├── routers/                 # HTTP / WebSocket 路由
+├── services/                # 业务逻辑（配对、LLM、导出、Prolific、量表…）
+├── templates/               # Jinja2 页面（实验页 + 管理后台）
+├── static/                  # CSS、chat.js、头像
+└── tests/                   # 条件分配、流程、Prolific、导出等测试
+```
+
+**入口与配置**
+
+| 文件 | 作用 |
+|------|------|
+| `main.py` | 应用入口；挂载 experiment / survey / chat / ws / admin 路由；启动时连 Redis、跑后台任务 |
+| `config.py` | 所有可调参数的单一来源；Render 的 `postgresql://` 会自动转成 asyncpg / psycopg2 |
+| `database.py` | 异步数据库引擎；`pool_size=20`、`max_overflow=30` |
+
+**数据层 `models/`**
+
+| 文件 | 作用 |
+|------|------|
+| `participant.py` | 参与者：条件（task_type / partnership / partner_label）、当前步骤（13 步）、轮次、超时/退出标记、加密 Prolific ID |
+| `chat.py` | 聊天室（HHC/HMC、轮次、turn 数）与消息 |
+| `survey.py` | 问卷作答（Likert + 人口统计） |
+| `experiment.py` | 事件日志与实验配置（含可覆盖的 LLM prompt） |
+
+**路由 `routers/`**
+
+| 文件 | 作用 |
+|------|------|
+| `experiment.py` | 知情同意、Welcome、热身、说明、Payment、`/resume/{token}`；条件分配加锁 |
+| `survey.py` | 问卷说明 + Page A/B/C + 人口统计 |
+| `chat.py` | 聊天页、配对确认页、结束聊天（含 retry/dropout）、HMC/HHC 聊天 WebSocket |
+| `ws.py` | 配对等候室 WebSocket（HHC 真排队 / HMC 5–15s 假等待） |
+| `errors.py` | 404 / 500 页面 |
+| `admin/` | 管理后台拆成多个子路由：登录、仪表盘、参与者、导出、配置、测试工具 |
+
+**业务逻辑 `services/`**
+
+| 文件 | 作用 |
+|------|------|
+| `__init__.py` | 最小配额条件分配 + 并发锁（防止两人同时抽到同一格） |
+| `matchmaking.py` | Redis 有序集合排队、120s 超时回退、出队（含停留超时清队列） |
+| `llm.py` | litellm 调用、并发信号量（默认 30）、失败兜底回复、R2 注入 R1 对话上下文 |
+| `redis_pubsub.py` | 跨连接广播聊天消息；**每个聊天 WebSocket 占用一条独立 Redis 连接** |
+| `prolific.py` | URL 参数、24 位格式校验、HMAC 去重、完成回调 |
+| `scales.py` | Likert 量表注册表（改量表主要改这里 + `models/survey.py`） |
+| `export.py` | 参与者宽表 / 聊天长表 CSV |
+| `monitoring.py` | 事件记录、步骤计时、卡住检测（超时标 `is_timeout` 并移出队列） |
+| `chat_settings.py` / `chat_context.py` | 聊天轮次/时长配置；聊天页上下文（身份、头像、force_chatbot） |
+| `participant_factory.py` | 测试被试创建 |
+| `auth.py` | 管理员密码校验 |
+
+**页面与静态资源**
+
+| 路径 | 作用 |
+|------|------|
+| `templates/` | 实验页约 16 个（含错误页）+ 管理后台 8 个 + Likert 宏 |
+| `static/css/main.css` | 全站样式 |
+| `static/js/chat.js` | 聊天 WebSocket 客户端（重连、历史恢复、去重） |
+| `static/avatar/` | 头像与热身图 |
+
+**其它**
+
+| 路径 | 作用 |
+|------|------|
+| `schemas/` | API / 表单校验（参与者、聊天、问卷、管理员） |
+| `dependencies/participant.py` | 从会话 Cookie 解析当前参与者，供各路由复用 |
+| `alembic/` | 表结构变更历史；部署时 `alembic upgrade head` |
+| `tests/` | 不连真实 LLM 的单元/集成测试 |
+| `render.yaml` | Render 一键蓝图；**不要把数据库密码写进仓库** |
 
 ### 2. 管理后台使用 / Admin Dashboard
 
@@ -172,7 +263,7 @@ uvicorn main:app --reload --port 8000
 
 查看所有参与者信息，包括：
 - 分配条件（taskType, partnership, partnerLabel）
-- 当前步骤 + **彩色进度条**（12步进度百分比）
+- 当前步骤 + **彩色进度条**（13 步进度百分比）
 - 当前轮次
 - 状态标签（Finished / Active / Timeout）
 - HHC 回退状态
@@ -184,7 +275,7 @@ uvicorn main:app --reload --port 8000
 查看单个参与者的完整信息：
 - **条件标签**：taskType, partnership, partnerLabel 等彩色标签
 - **Resume URL**：可复制的恢复链接，支持参与者恢复会话
-- **12步进度条**：高亮当前步骤位置
+- **13 步进度条**：高亮当前步骤位置（consent → … → payment）
 - **步骤停留时长**：每步的 from/to/时长/限制/是否超限
 - **聊天历史**：按轮次折叠显示，活跃房间支持刷新
 - **问卷回答**：所有量表得分
@@ -236,7 +327,7 @@ uvicorn main:app --reload --port 8000
 **Demo Mode（演示模式）**：
 - **方法 1（推荐）**: 使用 CLI 启动 `python main.py run --demo`
 - **方法 2**: 在 `.env` 中设置 `DEMO_MODE=true` 并重启服务器
-- 效果：聊天轮次减少（2-5 轮），超时缩短（10s HHC 匹配 / 120s 聊天），Prolific 检查跳过
+- 效果：聊天轮次减少（2–5 轮），超时缩短（10s HHC 匹配 / **300s** 聊天），Prolific 检查跳过
 - 适合演示和快速测试
 
 **快捷操作栏** — v1.7 新增:
@@ -259,7 +350,7 @@ uvicorn main:app --reload --port 8000
 - 跳到聊天步骤时自动创建 HMC ChatRoom
 
 **高级工具**（可折叠区域）：
-- **自定义创建被试**：指定条件、起始步骤、昵称、头像
+- **自定义创建被试**：指定条件、起始步骤、昵称、头像。被试打开 Consent 并同意后，**会沿用你指定的条件**，不会再按 min-quota 重新抽组
 - **HHC 队列查看**：查看/清空 Redis 匹配队列
 
 **测试数据管理**：
@@ -285,9 +376,11 @@ https://your-domain.com/?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_I
 
 > **注意 (v1.1)**: 系统使用 JSON 格式 (`json=`) 发送完成回调，HTTP 超时为 10 秒。如果 Prolific 要求表单格式，请联系开发者将 `services/prolific.py` 中的 `json=` 改回 `data=`。
 
+Welcome 页也可手动输入 Prolific ID（无 URL 参数时）。ID 必须为 **24 位字母数字**；测试可用任意 24 位字母数字，系统不会向 Prolific 校验真伪。
+
 #### 3.3 重复参与检测
 
-系统自动检测 Prolific ID 重复。同一 Prolific ID 不能多次参与，会显示错误提示。
+系统用 HMAC-SHA256（`prolific_id_hash`）检测重复，无需解密整表。同一 Prolific ID 不能多次参与。Demo 模式跳过重复检查。
 
 #### 3.4 完成码
 
@@ -298,7 +391,7 @@ https://your-domain.com/?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_I
 完整流程：
 
 ```
-知情同意 → 头像昵称 → 热身写作 → 第1轮说明 → 聊天 → 第2轮说明 → 聊天 → 问卷(4页) → 完成
+知情同意 → Welcome（Prolific ID + 头像 + 昵称） → 热身写作 → 第1轮说明 → 等候室 → 聊天 → 第2轮说明 → 等候室 → 聊天 → 问卷说明 + A/B/C + 人口统计 → Payment
 ```
 
 #### 4.0 添加新 Likert 量表 / Adding a New Likert Scale — v2.3 新增
@@ -335,12 +428,14 @@ https://your-domain.com/?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_I
 
 #### 4.1 配对机制
 
-- **HMC（人机对话）**：参与者阅读说明后直接进入与 AI 的聊天
-- **HHC（人人对话）**：参与者进入等待室，系统自动匹配（Redis 队列，每 3 秒检查一次）
-  - 匹配成功：两人进入双人聊天（通过 WebSocket）
-  - 120 秒未匹配：自动回退为 HMC，与 AI 聊天，标记 `hhc_fallback=True`
-    - **R1 超时**：`partnership` 改写为 HMC（与 R1 实际聊天模态一致）
-    - **R2 超时**：`partnership` 保留原值（保持 ITT 分析的随机分组），R2 实际模态由该轮 ChatRoom 的 `room_type` 字段记录
+**所有人**阅读说明后都进入等候室（HMC 不是“跳过等待”）。
+
+- **Round 1 HMC**：虚假等候室（随机 5–15 秒），然后与 AI 聊天。身份由 `partner_label` 决定（MyBot 或伪装 Tommy）。
+- **Round 1 HHC**：进入真人配对队列。120 秒内匹配成功 → 与真人聊；超时 → 回退 HMC（`hhc_fallback=True`，**`partnership` 改写为 HMC**），仍按 `partner_label` 显示身份。
+- **Round 2（所有人）**：都尝试真人配对（按 `task_type` 分组，不按 `partner_label`）。不会与 Round 1 的同一 partner 再配。
+  - 匹配成功 → 真人聊天（UI 显示对方真实昵称/头像）
+  - 120 秒超时 → 回退 HMC，**强制 MyBot**；`partnership` **不改写**（保留 ITT 分组）；实际模态看该轮 `ChatRoom.room_type`
+- 两轮任务类型相同：`task_type` 只在 Consent 时分配一次。
 
 #### 4.2 聊天控制
 
@@ -353,6 +448,8 @@ https://your-domain.com/?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_I
 > **v2.2 更新**: HHC 聊天的 turn 计数改为 per-participant 模式：1 turn = 双方各自至少发送 1 条消息（`complete_turns = min(A_count, B_count)`）。例如 A 发 3 条 B 发 1 条 = 1 turn，A 发 2 条 B 发 2 条 = 2 turns。
 
 聊天界面显示实时计时器和消息计数，"End Chat" 按钮在达到最少轮数后才可点击。
+
+若计时结束或对方离开、且未满 `min_turns`，会出现居中对话框：**Yes, Continue** 回到本轮说明重新配对；**No, Leave** 标记 `is_dropout=True` 并退出。刷新页面后对话框仍在（服务端按剩余时间计算）。
 
 #### 4.3 条件分配
 
@@ -379,7 +476,7 @@ https://your-domain.com/?PROLIFIC_PID={{%PROLIFIC_PID%}}&SESSION_ID={{%SESSION_I
 
 | 措施 | 说明 |
 |------|------|
-| Prolific ID 加密 | 使用 Fernet 对称加密存储 |
+| Prolific ID 加密 | Fernet 存密文 + HMAC-SHA256 去重索引（无需逐行解密） |
 | 聊天消息消毒 | 使用 bleach 防止 XSS 攻击 |
 | Admin 会话认证 | 单密码 + Redis Session (24h TTL)，所有页面强制检查登录状态 (v1.8) |
 | 欺骗一致性保护 | 对方离开通知使用欺骗条件对应的显示名，不暴露真实身份 (v2.2) |
@@ -409,12 +506,16 @@ docker-compose restart redis
 
 #### Q: LLM 没有回复
 
-1. 检查 `.env` 中 `OPENAI_API_KEY` 是否正确
+1. 检查 `.env` 中 `N1N_API_KEY` + `LLM_API_BASE`，或 `OPENAI_API_KEY`
 2. 查看日志：主 provider 失败时会自动尝试备用 provider（如果配置了 `LLM_BACKUP_API_BASE`）
 3. 检查管理后台 Config 中 `default_model` 是否正确
-4. CHARACTER_PROMPT 无需手动配置（v1.2 内置默认值），但可以自定义
+4. CHARACTER_PROMPT 无需手动配置（内置默认值），但可以自定义
 5. 查看 uvicorn 日志中是否有 LLM 错误
 6. LLM 全部失败时会返回兜底回复："I'm sorry, I'm having trouble responding right now."
+
+#### Q: Welcome 页提示无法保存 Prolific ID
+
+服务器必须配置有效的 Fernet `ENCRYPTION_KEY`。若库里已有数据，**不要重新生成**密钥（旧密文无法解密）。测试可用任意 24 位字母数字 ID，系统不会向 Prolific 核验。
 
 #### Q: HHC 匹配不成功
 
@@ -439,30 +540,82 @@ alembic upgrade head
 #### 8.1 准备
 
 1. 将项目推送到 GitHub
-2. 在 Render 上创建新 Web Service
+2. 在 Render 上用 Blueprint 导入本仓库（推荐），或手动创建 Web Service
 
 #### 8.2 Render 配置
 
+当前 `render.yaml`：**Web = Free**，**Redis (Key Value) = Free**，Postgres 在 yaml 里也写了 Free（Free Postgres **创建后 30 天过期**，正式收数请用 Starter）。
+
 - **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1`
-- **Environment**: Python 3.11+
-- **Workers**: 必须为 1（避免 WebSocket 跨进程问题）
+- **Start Command**: `PYTHONPATH=. alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1`
+- **Runtime**: Python **3.12**
+- **Health check**: `/health`
+- **Workers**: 必须为 **1**（WebSocket 不能多进程）
+
+`DATABASE_URL` 必须在 Dashboard 手动填 **Internal Connection String**（含密码，不要提交到 Git）。`REDIS_URL` 由 `conexperiment-redis` 自动注入。
 
 #### 8.3 环境变量
 
 在 Render Dashboard → Environment 中设置：
-- `DATABASE_URL` (PostgreSQL 连接串，Render 会提供)
-- `REDIS_URL` (Redis 连接串，使用 Render Redis 服务)
-- `SECRET_KEY`
-- `OPENAI_API_KEY`
-- `ENCRYPTION_KEY`
-- `ADMIN_PASSWORD_HASH`
-- `PROLIFIC_COMPLETION_URL` (可选)
-- `DEBUG` = `false`
 
-#### 8.4 Redis 服务
+| 变量 | 说明 |
+|------|------|
+| `DATABASE_URL` | Postgres **Internal** 连接串（手动） |
+| `REDIS_URL` | 通常自动注入 |
+| `SECRET_KEY` | 会话密钥 |
+| `LLM_API_BASE` / `N1N_API_KEY` | 主 LLM 网关（或改用 `OPENAI_API_KEY`） |
+| `LLM_BACKUP_*` | 可选备用 LLM |
+| `ENCRYPTION_KEY` | Fernet；有数据后不要轮换 |
+| `ADMIN_PASSWORD_HASH` | 管理员密码 SHA256 |
+| `PROLIFIC_COMPLETION_URL` | 正式上线时再填 |
+| `DEBUG` | `false` |
+| `DEMO_MODE` | 正式收数必须 `false` |
 
-Render 提供托管的 Redis 服务，创建后在环境变量中配置 `REDIS_URL`。
+#### 8.4 Redis 与 Postgres
+
+- Redis：Blueprint 会创建 `conexperiment-redis`。Free 实例**不落盘**，重启会丢队列/会话。
+- Postgres：建议 **Starter**（同区域），把 Internal URL 填进 Web 的 `DATABASE_URL`。Free 库 1 GB、30 天过期、无备份。
+
+#### 8.5 同时在线人数（按 Render 套餐估算）
+
+平台必须 **单 worker**，容量主要卡在 **CPU/内存、Redis 连接数、LLM 并发**，不是“网页能开多少个标签”。
+
+应用侧硬限制：
+
+| 限制 | 数值 | 含义 |
+|------|------|------|
+| uvicorn workers | 1 | 所有人共用一个事件循环 |
+| Redis 共享池 | 最多 20 条 | 排队、会话、监控 |
+| 聊天 Pub/Sub | **每人一条独立 Redis 连接** | 人在聊天室里才会占用 |
+| LLM 信号量 | 30 | 同时最多 30 个 AI 回复在飞 |
+| DB 连接池 | 20+30 | 一般不是瓶颈 |
+
+Render 官方套餐（与本项目相关）：
+
+| 组件 | Free | Starter（建议正式收数） |
+|------|------|-------------------------|
+| Web | 512 MB / **0.1 CPU**；闲置 15 分钟休眠；冷启动约 1 分钟；每月 750 小时 | 512 MB / **0.5 CPU**；常驻 |
+| Redis | 25 MB / **50 连接**；不持久化 | 256 MB / **250 连接**；可持久化 |
+| Postgres | 256 MB / 100 连接 / 1 GB / **30 天过期** | 付费、可备份 |
+
+**估多少人同时在线（经验值，不是 SLA）：**
+
+| 部署 | 正在聊天 / 等候室 | 整场实验中（多数在问卷页） | 说明 |
+|------|-------------------|----------------------------|------|
+| **当前 yaml：三件套全 Free** | 约 **20–30** | 约 **50–80** | Redis 50 连接：共享池约 20 + 聊天约 30。0.1 CPU 在多人同时发消息时会卡。**不适合正式 Prolific 放量。** |
+| Web Starter + Redis Starter + Postgres Starter | 约 **80–120** | 约 **150** | Redis 250 连接够用；HMC 仍受 LLM 30 并发限制；512 MB 内存不宜再堆大量 WebSocket |
+| Web Standard（2 GB / 1 CPU）+ Redis Standard | **150+** | 200+ | 适合一次放 100+ 人；仍保持 `--workers 1` |
+
+补充：
+
+- **HMC**：30 人同时等 AI 回复是设计上限；再多会排队，聊天变慢。
+- **HHC**：同一 `task_type` 队列里至少要有两人才能配上；奇数个会有人等到超时后进 AI。
+- **问卷页**几乎不占 Redis 专用连接，所以“在实验里”可以比“在聊天里”多。
+- Free Web **休眠**：Prolific 第一人会碰到约 1 分钟加载页，后续人还好；中途 15 分钟没流量又会睡。
+- Free Redis **重启丢数据**：正在排队的人可能匹配失败，需刷新。
+- 这是**同时在线**，不是总样本量。总人数主要受 Postgres 磁盘和 LLM 费用限制。
+
+**正式收数建议**：Web Starter（避免休眠）+ Redis Starter + Postgres Starter；Prolific 分批放人（Starter 上每批约 40–80 人更稳）。当前 Free 只适合自己点开测试。
 
 ---
 
@@ -493,53 +646,91 @@ cp .env.example .env
 
 Required `.env` variables:
 - `SECRET_KEY`: Random string
-- `DATABASE_URL`: PostgreSQL async connection string
+- `DATABASE_URL`: PostgreSQL connection string (driver prefix auto-converted)
 - `REDIS_URL`: Redis connection string
-- `OPENAI_API_KEY`: Your OpenAI API key (primary LLM provider)
-- `ENCRYPTION_KEY`: Fernet key (for Prolific ID encryption)
+- `ENCRYPTION_KEY`: Fernet key (required on Welcome; do not rotate if data exists)
 - `ADMIN_PASSWORD_HASH`: SHA256 hash of admin password
+- Primary LLM: `N1N_API_KEY` + `LLM_API_BASE`, **or** `OPENAI_API_KEY`
 
 Optional `.env` variables (backup LLM provider, auto-fallback on primary failure):
-- `LLM_BACKUP_API_BASE`: Backup API base URL (e.g., `https://api.chatanywhere.tech/v1`)
+- `LLM_BACKUP_API_BASE`: Backup API base URL
 - `LLM_BACKUP_API_KEY`: Backup API key
 - `LLM_BACKUP_MODEL`: Backup model name (default: `gpt-4o-mini`)
 
-#### 1.4 Replace Placeholder Avatars
+#### 1.4 Avatars and Priming Images
 
-The `static/avatar/` directory contains SVG placeholders. Replace them with real images from the v1 project (`../ConExperiment/_static/avatar/`):
+`static/avatar/` already contains the production PNG/JPG files. No copy from v1 is required.
 
-- `myBot.png` — AI partner avatar
-- `fox.png` — Tommy (fake human) avatar / selectable participant avatar
-- `lion.png`, `rabbit.png`, `tiger.png` — Selectable participant avatars
-- `img_sad.png` — Emotion task priming image
-- `img_box.jpg` — Function task priming image
+| File | Use |
+|------|-----|
+| `myBot.png` | AI partner (MyBot); not selectable |
+| `fox.png` | Tommy (fake human) and selectable avatar |
+| `lion.png` / `rabbit.png` / `tiger.png` | Selectable participant avatars |
+| `img_sad.png` | Emotion-task priming image |
+| `img_box.jpg` | Function-task priming image |
 
 #### 1.5 Database Migration
 
+The repo already includes the migration chain. On a new environment run only:
+
 ```bash
-alembic revision --autogenerate -m "initial"
 alembic upgrade head
 ```
+
+Do **not** run `alembic revision --autogenerate -m "initial"` against an existing database. Generate a new revision only after you change models.
 
 #### 1.6 Start Development Server
 
 ```bash
+python main.py run --reload
+# or
 uvicorn main:app --reload --port 8000
 ```
 
 URLs:
 - Experiment: http://localhost:8000
+- Health: http://localhost:8000/health
 - API Docs: http://localhost:8000/docs
 - Admin: http://localhost:8000/admin/login
 
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
 #### 1.7 First-Run Configuration
 
-> **v1.2 update**: All 4 CHARACTER_PROMPT values have built-in defaults (migrated from ConExperiment v1). No manual configuration needed to start testing. The Config page can override defaults at any time.
+All 4 CHARACTER_PROMPT values have built-in defaults. The Config page can override them at any time (clear a field to restore the default).
 
-Optional configuration:
-1. Login to Admin → `/admin/login`
-2. (Optional) Customize LLM prompts in Config — clear a field to restore its built-in default
-3. Verify `default_model` setting (default: `gpt-4o-mini`)
+#### 1.8 Project Structure
+
+See the Chinese **§1.8** for the same tree. Short map:
+
+| Path | Role |
+|------|------|
+| `main.py` | FastAPI entry, routers, lifespan, CLI |
+| `config.py` | Settings from env (chat limits, LLM, demo mode) |
+| `database.py` | Async SQLAlchemy engine (pool 20+30) |
+| `models/` | Tables: participant, chat, survey, experiment events |
+| `schemas/` | Pydantic validation |
+| `dependencies/` | Shared session helpers (load participant from cookie) |
+| `routers/experiment.py` | Consent, welcome, priming, instructions, payment, resume |
+| `routers/survey.py` | Survey prompt + pages A/B/C + demographics |
+| `routers/chat.py` | Chat UI, pairing confirmed, chat WebSocket, retry/dropout |
+| `routers/ws.py` | Matchmaking WebSocket (real HHC queue / fake HMC wait) |
+| `routers/admin/` | Login, dashboard, participants, export, config, test tools |
+| `services/matchmaking.py` | Redis queues, 120s fallback, dequeue on idle timeout |
+| `services/llm.py` | litellm, semaphore (30), fallback reply, R1→R2 context |
+| `services/redis_pubsub.py` | Per-chat dedicated Redis pub/sub connection |
+| `services/prolific.py` | 24-char ID check, HMAC dedup, completion callback |
+| `services/scales.py` | Likert registry (add scales here + `models/survey.py`) |
+| `services/export.py` | Wide/long CSV + quality flags |
+| `services/monitoring.py` | Events, stuck detection, `is_timeout` + queue removal |
+| `templates/` | ~16 experiment pages + 8 admin pages + Likert macros |
+| `static/` | CSS, `chat.js`, avatars |
+| `tests/` | Condition assignment, flow, Prolific, export |
+| `alembic/` | Schema migrations |
+| `render.yaml` | Blueprint; set `DATABASE_URL` in Dashboard only |
 
 ### 2. Admin Dashboard
 
@@ -568,7 +759,7 @@ Overview of experiment status, **auto-refreshing every 5 seconds**:
 
 View all participants with:
 - Condition assignments (taskType, partnership, partnerLabel)
-- Current step + **color-coded progress bar** (12-step percentage)
+- Current step + **color-coded progress bar** (13-step percentage)
 - Status badges (Finished / Active / Timeout)
 - **"View" link** to participant detail page
 
@@ -577,7 +768,7 @@ View all participants with:
 Full participant observation page:
 - Condition badges + status indicators
 - **Resume URL**: copyable link to resume participant session
-- **12-step progress bar** with highlighted current position
+- **13-step progress bar** with highlighted current position (consent → … → payment)
 - **Step Duration History**: from/to/duration/limit/over-limit per step
 - **Chat History**: collapsible per room, auto-refresh for active rooms
 - **Survey Responses**: all questionnaire answers
@@ -616,7 +807,7 @@ Visit `/admin/test-tools` for the following testing features:
 **Demo Mode**:
 - **Method 1 (Recommended)**: Start with CLI `python main.py run --demo`
 - **Method 2**: Set `DEMO_MODE=true` in `.env` and restart the server
-- Reduced turns (2-5), shorter timeouts (10s HHC matching / 120s chat), Prolific checks skipped
+- Reduced turns (2–5), shorter timeouts (10s HHC matching / **300s** chat), Prolific checks skipped
 - Ideal for presentations and quick testing
 
 **Quick Actions Bar** — v1.7 new:
@@ -637,7 +828,7 @@ Three one-click buttons at the top of the page:
 - Auto-creates HMC ChatRoom when jumping to a chat step
 
 **Advanced Tools** (collapsible section):
-- **Create Test Participant (Custom)**: specify conditions, start step, nickname, avatar
+- **Create Test Participant (Custom)**: specify conditions, start step, nickname, avatar. After Consent, those conditions are **kept** (min-quota does not re-assign)
 - **HHC Queue Status**: view/clear matchmaking queues
 
 **Test Data Management**:
@@ -659,24 +850,28 @@ Set `PROLIFIC_COMPLETION_URL` in `.env` to the callback URL provided by Prolific
 
 > **Note (v1.1)**: The system sends completion callbacks in JSON format (`json=`) with a 10-second HTTP timeout. If Prolific requires form-encoded data, change `json=` back to `data=` in `services/prolific.py`.
 
+The Welcome page also accepts a typed Prolific ID. It must be **exactly 24 alphanumeric characters**. A fake 24-character ID is enough for testing; Prolific is not called to verify it.
+
 #### 3.3 Duplicate Detection
 
-Duplicate Prolific IDs are automatically rejected with an error message.
+Duplicates are detected via HMAC-SHA256 (`prolific_id_hash`) without decrypting every row. The same Prolific ID cannot participate twice. Demo mode skips this check.
 
 ### 4. Experiment Flow
 
 ```
-Consent → Welcome → Priming → R1 Instructions → Chat → R2 Instructions → Chat → Survey (4 pages) → Payment
+Consent → Welcome → Priming → R1 Instructions → Waiting → Chat → R2 Instructions → Waiting → Chat → Survey prompt + A/B/C + Demographics → Payment
 ```
 
 #### 4.1 Pairing
 
-- **HMC**: Participant reads instructions → enters chat with AI immediately
-- **HHC**: Participant enters waiting room → auto-matched via Redis queue (3s polling)
-  - Match found: Both enter HHC chat via WebSocket
-  - 120s timeout: Fallback to HMC (AI chat), `hhc_fallback=True`
-    - **Round 1 timeout**: `partnership` rewritten to HMC (matches R1 actual chat modality)
-    - **Round 2 timeout**: `partnership` preserved (keeps original random assignment for ITT analysis); R2 actual modality is recorded in that round's ChatRoom `room_type`
+**Everyone** goes to a waiting room after instructions (HMC does not skip it).
+
+- **Round 1 HMC**: Fake wait (5–15s), then AI chat. Identity follows `partner_label` (MyBot or fake Tommy).
+- **Round 1 HHC**: Real queue. Match within 120s or fallback to HMC (`hhc_fallback=True`, **`partnership` rewritten to HMC**). Display still follows `partner_label`.
+- **Round 2 (everyone)**: Try real HHC (queued by `task_type` only). The Round 1 partner is excluded.
+  - Match → human chat (real nickname/avatar)
+  - 120s timeout → HMC with **forced MyBot**; **`partnership` is not rewritten** (ITT); actual modality is `ChatRoom.room_type`
+- Both rounds use the same `task_type` (assigned once at Consent).
 
 #### 4.2 Chat Controls
 
@@ -687,6 +882,8 @@ Consent → Welcome → Priming → R1 Instructions → Chat → R2 Instructions
 | `max_duration` | 600s | Chat auto-ends on timeout |
 
 > **v2.2 update**: HHC chat turn counting now uses per-participant mode: 1 turn = both participants each send at least 1 message (`complete_turns = min(A_count, B_count)`). E.g., A sends 3, B sends 1 = 1 turn; A sends 2, B sends 2 = 2 turns.
+
+If the timer ends or the partner leaves before `min_turns`, a dialog appears: **Yes, Continue** returns to this round’s instructions; **No, Leave** sets `is_dropout=True`. The dialog is computed on the server, so it survives refresh.
 
 #### 4.3 Condition Assignment
 
@@ -702,7 +899,7 @@ Min-quota strategy: always assigns to the condition with fewest participants.
 
 | Measure | Description |
 |---------|-------------|
-| Prolific ID encryption | Fernet symmetric encryption at rest |
+| Prolific ID encryption | Fernet ciphertext + HMAC-SHA256 index for dedup |
 | Chat message sanitization | bleach XSS prevention |
 | Admin session auth | Single password + Redis session (24h TTL), all pages enforce login check (v1.8) |
 | Deception consistency | Partner left notification uses deception-correct display name, never exposes real identity (v2.2) |
@@ -717,8 +914,9 @@ Min-quota strategy: always assigns to the condition with fewest participants.
 |-------|----------|
 | "relation does not exist" | Run `alembic upgrade head` |
 | Redis connection failed | `docker-compose restart redis` |
-| LLM not responding | Check `OPENAI_API_KEY`; system auto-falls back to backup provider if configured; check uvicorn logs |
-| HHC not matching | Requires 2+ HHC participants online simultaneously |
+| LLM not responding | Check `N1N_API_KEY` + `LLM_API_BASE` (or `OPENAI_API_KEY`); fallback provider if configured |
+| Welcome cannot save Prolific ID | Set a valid Fernet `ENCRYPTION_KEY`; do not rotate if data exists. Fake 24-char IDs work for tests |
+| HHC not matching | Requires 2+ HHC participants in the same task-type queue |
 | WebSocket errors | Check browser console for errors |
 | HTTPS WebSocket fails | Already fixed — protocol auto-detection (ws/wss) |
 | Reset all data | `alembic downgrade base && alembic upgrade head` |
@@ -732,38 +930,68 @@ Min-quota strategy: always assigns to the condition with fewest participants.
 
 #### 8.2 Web Service Settings
 
+Current `render.yaml`: **web Free**, **Redis Free**, Postgres listed as Free (Free Postgres **expires after 30 days** — use Starter for real collection).
+
 - **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1`
-- **Runtime**: Python 3.11+
-- **Instance Type**: Free tier or higher
-- **Workers**: MUST be 1 (WebSocket constraint)
+- **Start Command**: `PYTHONPATH=. alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1`
+- **Runtime**: Python **3.12**
+- **Health check**: `/health`
+- **Workers**: MUST be **1** (WebSocket)
+
+Set `DATABASE_URL` to the Postgres **Internal Connection String** in the Dashboard (do not commit it). `REDIS_URL` is injected from `conexperiment-redis`.
 
 #### 8.3 Environment Variables
 
 Set in Render Dashboard → Environment:
-- `DATABASE_URL` (provided by Render PostgreSQL)
-- `REDIS_URL` (provided by Render Redis)
-- `SECRET_KEY`, `OPENAI_API_KEY`, `ENCRYPTION_KEY`, `ADMIN_PASSWORD_HASH`
-- `LLM_BACKUP_API_BASE`, `LLM_BACKUP_API_KEY` (optional, backup LLM provider)
-- `PROLIFIC_COMPLETION_URL` (optional)
-- `DEBUG=false`
+- `DATABASE_URL` (Internal URL, manual)
+- `REDIS_URL` (usually auto)
+- `SECRET_KEY`, `ENCRYPTION_KEY`, `ADMIN_PASSWORD_HASH`
+- `LLM_API_BASE`, `N1N_API_KEY` (or `OPENAI_API_KEY`)
+- `LLM_BACKUP_API_BASE`, `LLM_BACKUP_API_KEY` (optional)
+- `PROLIFIC_COMPLETION_URL` (optional until go-live)
+- `DEBUG=false`, `DEMO_MODE=false` for real data collection
+
+#### 8.4 Redis and Postgres
+
+- Free Redis is in-memory only (queues/sessions vanish on restart).
+- Prefer **Starter** Postgres in the same region as the web service.
+
+#### 8.5 Concurrent Capacity (Render plans)
+
+The app runs **one worker**. Capacity is limited by CPU/RAM, **Redis connections**, and the LLM semaphore — not by “how many tabs can open.”
+
+App limits: Redis shared pool ≤ 20; **each person in chat uses one extra Redis pub/sub connection**; `LLM_MAX_CONCURRENT=30`; DB pool 20+30.
+
+| Deploy | In chat / waiting | In the study (mostly survey pages) | Notes |
+|--------|-------------------|--------------------------------------|-------|
+| **Current yaml (all Free)** | ~**20–30** | ~**50–80** | Free Redis = **50 connections** (≈20 pool + ≈30 chats). Web is 0.1 CPU and **spins down after 15 min idle**. **Not for live Prolific.** |
+| Starter web + Starter Redis + Starter Postgres | ~**80–120** | ~**150** | Redis 250 connections; HMC still capped at 30 simultaneous LLM calls; 512 MB RAM |
+| Standard web (2 GB / 1 CPU) + Standard Redis | **150+** | 200+ | For launching 100+ people at once; still `--workers 1` |
+
+HMC: at most 30 AI replies in flight. HHC: pairing needs two people in the same `task_type` queue. Survey pages barely use dedicated Redis connections, so “in the experiment” can exceed “in chat.” Concurrent ≠ total sample size.
+
+**For real collection:** Starter web (always-on) + Starter Redis + Starter Postgres; release Prolific in batches (~40–80 on Starter). Use Free only for your own tests.
 
 ---
 
 ## File Reference / 文件索引
 
+Full descriptions: Chinese **§1.8**. Summary:
+
 | File | Purpose |
 |------|---------|
-| `main.py` | FastAPI entry point + admin middleware |
-| `config.py` | Settings (env vars) |
+| `main.py` | FastAPI entry + CLI |
+| `config.py` | Settings from env |
 | `database.py` | SQLAlchemy async engine |
-| `models/` | ORM models (participant, chat, survey, experiment) |
-| `services/` | Business logic (LLM, matchmaking, export, Prolific, scales) |
-| `routers/` | Route handlers (experiment, chat, survey, admin, ws) |
-| `schemas/` | Pydantic request/response models |
-| `templates/` | Jinja2 HTML templates (12 experiment + 6 admin + macros) + Alpine.js |
-| `static/css/main.css` | Complete CSS design system |
-| `static/avatar/` | Avatar images (replace SVG placeholders with real files) |
-| `alembic/` | Database migrations |
-| `docker-compose.yml` | PostgreSQL + Redis for local dev |
-| `.env.example` | Environment variable template |
+| `models/` | ORM (participant, chat, survey, experiment) |
+| `services/` | Matchmaking, LLM, export, Prolific, scales, monitoring |
+| `routers/` | Experiment, chat, survey, ws, `admin/` sub-routers |
+| `schemas/` | Pydantic models |
+| `dependencies/` | Participant session helpers |
+| `templates/` | ~16 experiment + 8 admin pages + Likert macros |
+| `static/` | CSS, `chat.js`, avatar PNGs |
+| `tests/` | pytest |
+| `alembic/` | Migrations |
+| `render.yaml` | Render Blueprint |
+| `docker-compose.yml` | Local PostgreSQL + Redis |
+| `.env.example` | Env template (never commit `.env`) |
