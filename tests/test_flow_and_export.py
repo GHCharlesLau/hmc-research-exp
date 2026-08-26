@@ -49,6 +49,71 @@ def test_export_headers_include_scale_fields():
     assert "partner_label_check" in header or "manip_check" in header
 
 
+def test_format_export_timestamp_excel_safe():
+    from datetime import datetime, timezone
+    from services.export import format_export_timestamp
+
+    assert format_export_timestamp(None) == ""
+    dt = datetime(2026, 8, 26, 9, 15, 3, tzinfo=timezone.utc)
+    assert format_export_timestamp(dt) == '="2026-08-26 09:15:03"'
+    naive = datetime(2026, 8, 26, 9, 15, 3)
+    assert format_export_timestamp(naive) == '="2026-08-26 09:15:03"'
+
+
+def test_partner_display_for_room_uses_shared_room_not_latest_partner():
+    from models.chat import RoomType
+    from services.export import partner_display_for_room
+
+    class _Room:
+        def __init__(self, room_type, room_id, partner_id=None):
+            self.room_type = room_type
+            self.room_id = room_id
+            self.partner_id = partner_id
+
+    p1, p2, p3 = "id-1", "id-2", "id-3"
+    lookup = {p1: "P-0001", p2: "P-0002", p3: "P-0003"}
+    members = {
+        "hhc-1-ab": {p1: "P-0001", p2: "P-0002"},
+        "hhc-2-ac": {p1: "P-0001", p3: "P-0003"},
+    }
+    r1 = _Room(RoomType.HHC, "hhc-1-ab")
+    r2 = _Room(RoomType.HHC, "hhc-2-ac")
+    hmc = _Room(RoomType.HMC, "solo-room")
+
+    assert partner_display_for_room(r1, p1, members, lookup) == "P-0002"
+    assert partner_display_for_room(r2, p1, members, lookup) == "P-0003"
+    assert partner_display_for_room(hmc, p1, members, lookup) == ""
+
+
+def test_best_room_for_round_prefers_more_turns():
+    from datetime import datetime, timezone
+    from models.chat import SenderRole
+    from services.export import best_room_for_round
+
+    class _Msg:
+        def __init__(self, role):
+            self.sender_role = role
+
+    class _Room:
+        def __init__(self, round_number, n_complete, created):
+            self.round_number = round_number
+            self.created_at = created
+            self.messages = (
+                [_Msg(SenderRole.user)] * n_complete
+                + [_Msg(SenderRole.partner)] * n_complete
+            )
+
+    early = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    late = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    retry = _Room(1, 1, early)
+    keep = _Room(1, 4, late)
+    r2 = _Room(2, 2, late)
+    chosen = best_room_for_round([retry, keep, r2], 1)
+    assert chosen is keep
+    assert best_room_for_round([retry, keep, r2], 2) is r2
+    assert best_room_for_round([retry, keep, r2], 3) is None
+
+
 def test_convert_db_url_adds_driver():
     raw = "postgresql://user:pass@localhost:5432/db"
     assert _convert_db_url(raw, "asyncpg") == "postgresql+asyncpg://user:pass@localhost:5432/db"

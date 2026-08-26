@@ -285,8 +285,8 @@ python main.py run --demo
 
 Two CSV formats available via Admin Dashboard > Data Export:
 
-1. **Participant Wide Table** -- one row per participant with all survey responses, demographics, chat statistics
-2. **Chat Messages Long Table** -- one row per message with sender, text, timestamps
+1. **Participant Wide Table** -- nickname, avatar, per-round `partner_display_id_r1` / `partner_display_id_r2`, survey, demographics, chat stats
+2. **Chat Messages Long Table** -- one row per message with UTC `timestamp`, nickname, avatar, and that room's partner
 
 Test participants are excluded by default; toggle "Include test participants" to include them. Optional checkboxes exclude page/chat timeouts (`is_timeout`), dropouts (`is_dropout`), and chats that reached max duration (`chat_r1_over_max` / `chat_r2_over_max`).
 

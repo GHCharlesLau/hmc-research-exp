@@ -149,6 +149,9 @@ async def matchmaking_websocket(websocket: WebSocket, participant_id: str, round
                     for pid in (p1_id, p2_id):
                         existing_room = await get_active_room(db, UUID(pid), round_number)
                         if existing_room:
+                            other_pid = UUID(p2_id if pid == p1_id else p1_id)
+                            if existing_room.partner_id is None:
+                                existing_room.partner_id = other_pid
                             room_uuids[pid] = str(existing_room.id)
                             logger.info(f"Reusing existing HHC room for {pid}: {existing_room.id}")
                             continue
@@ -157,6 +160,7 @@ async def matchmaking_websocket(websocket: WebSocket, participant_id: str, round
                             room_type=RoomType.HHC,
                             round_number=round_number,
                             room_id=room_id,
+                            partner_id=UUID(p2_id if pid == p1_id else p1_id),
                         )
                         db.add(room)
                         room_uuids[pid] = None

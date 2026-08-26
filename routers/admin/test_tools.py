@@ -245,12 +245,14 @@ async def force_match(request: Request, db: AsyncSession = Depends(get_db)):
         room_type=RoomType.HHC,
         round_number=round_number,
         room_id=room_id,
+        partner_id=uuid2,
     )
     room2 = ChatRoom(
         participant_id=uuid2,
         room_type=RoomType.HHC,
         round_number=round_number,
         room_id=room_id,
+        partner_id=uuid1,
     )
     db.add(room1)
     db.add(room2)
@@ -358,12 +360,14 @@ async def create_test_pair(request: Request, db: AsyncSession = Depends(get_db))
         room_type=RoomType.HHC,
         round_number=round_number,
         room_id=room_id,
+        partner_id=id2,
     )
     room2 = ChatRoom(
         participant_id=id2,
         room_type=RoomType.HHC,
         round_number=round_number,
         room_id=room_id,
+        partner_id=id1,
     )
     db.add(room1)
     db.add(room2)

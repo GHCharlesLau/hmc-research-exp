@@ -310,11 +310,13 @@ ConExperiment2.0/
 
 **参与者宽表** (`participants.csv`)：
 - 每行一个参与者
-- 包含：条件分配、问卷所有题项、人口统计、两轮聊天统计
+- 含：`nickname`、`avatar`、条件分配、**分轮搭档** `partner_display_id_r1` / `partner_display_id_r2`（HMC 为空）、问卷、人口统计、两轮聊天统计（含 `chat_r*_room_type`）
 
 **聊天长表** (`chat_messages.csv`)：
 - 每行一条聊天消息
-- 包含：参与者 ID、房间 ID、轮次、发送者角色、消息文本、时间戳
+- 含：`timestamp`（UTC，Excel 安全格式）、参与者 `display_id` / `nickname` / `avatar`、**该条消息所在房间的** `partner_display_id`、轮次、`room_type`、发送者、turn、正文
+
+> 旧版宽表只有一列 `partner_display_id`，读的是 `Participant.partner_id`。该字段在 Round 2 配对时会被覆盖，所以两轮搭档看起来相同。现已改为按各轮 ChatRoom 的共享 `room_id` 解析。HMC / AI 回退没有真人搭档，对应单元格为空。
 
 > **v1.5 更新**: 导出默认排除测试被试（`is_test=True`）。勾选 "Include test participants" 可包含测试数据。
 >
@@ -793,8 +795,10 @@ Full participant observation page:
 
 Two CSV formats:
 
-1. **Participant Wide Table** (`participants.csv`): One row per participant with all survey responses, demographics, and chat stats.
-2. **Chat Messages Long Table** (`chat_messages.csv`): One row per message with sender, text, timestamp.
+1. **Participant Wide Table** (`participants.csv`): One row per participant with nickname, avatar, **per-round partners** (`partner_display_id_r1` / `partner_display_id_r2`; empty for HMC), survey responses, demographics, and chat stats (`chat_r*_room_type`).
+2. **Chat Messages Long Table** (`chat_messages.csv`): One row per message with an Excel-safe UTC `timestamp` (before `text`), nickname, avatar, and the partner for **that room/round**.
+
+> The old single `partner_display_id` column read `Participant.partner_id`, which Round 2 overwrites. Export now resolves partners from each round's shared HHC `room_id`.
 
 > **v1.5 update**: Exports default to excluding test participants (`is_test=True`). Check "Include test participants" to include them.
 >

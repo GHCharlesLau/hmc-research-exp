@@ -1,14 +1,14 @@
 import csv
 import io
 import logging
-from typing import AsyncGenerator
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from models.participant import Participant
-from models.chat import ChatRoom, ChatMessage, SenderRole
+from models.chat import ChatRoom, ChatMessage, SenderRole, RoomType
 from models.survey import SurveyResponse
 from services.prolific import decrypt_prolific_id
 from services.chat_settings import get_chat_limits
@@ -53,6 +53,56 @@ def should_exclude_from_export(
     return False
 
 
+def format_export_timestamp(dt: datetime | None) -> str:
+    """Excel-safe UTC timestamp. ISO offsets like +00:00 are treated as formulas."""
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return f'="{dt.strftime("%Y-%m-%d %H:%M:%S")}"'
+
+
+def _complete_turns(room: ChatRoom) -> int:
+    user_msgs = sum(1 for m in room.messages if m.sender_role == SenderRole.user)
+    partner_msgs = sum(1 for m in room.messages if m.sender_role == SenderRole.partner)
+    return min(user_msgs, partner_msgs)
+
+
+def _room_created_at(room: ChatRoom) -> datetime:
+    if room.created_at is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if room.created_at.tzinfo is None:
+        return room.created_at.replace(tzinfo=timezone.utc)
+    return room.created_at
+
+
+def best_room_for_round(rooms: list[ChatRoom], round_number: int) -> ChatRoom | None:
+    """Room with the most complete turns in this round; ties prefer the later room."""
+    candidates = [r for r in rooms if r.round_number == round_number]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda r: (_complete_turns(r), _room_created_at(r)))
+
+
+def partner_display_for_room(
+    room: ChatRoom,
+    participant_id,
+    room_members: dict[str, dict],
+    participant_lookup: dict,
+) -> str:
+    """Human partner display_id for this room. Empty for HMC / AI chats."""
+    if room.room_type == RoomType.HHC and room.room_id:
+        members = room_members.get(room.room_id) or {}
+        for pid, display_id in members.items():
+            if pid != participant_id and display_id:
+                return display_id
+    if room.partner_id and room.partner_id in participant_lookup:
+        return participant_lookup[room.partner_id]
+    return ""
+
+
 async def _build_participant_lookup(db: AsyncSession) -> dict:
     """Build lookup dict: participant UUID -> display_id.
 
@@ -61,6 +111,21 @@ async def _build_participant_lookup(db: AsyncSession) -> dict:
     """
     result = await db.execute(select(Participant))
     return {p.id: p.display_id for p in result.scalars().all()}
+
+
+async def _build_hhc_room_members(
+    db: AsyncSession, participant_lookup: dict,
+) -> dict[str, dict]:
+    """Map shared HHC room_id -> {participant_id: display_id}."""
+    result = await db.execute(
+        select(ChatRoom.room_id, ChatRoom.participant_id).where(ChatRoom.room_id.isnot(None))
+    )
+    members: dict[str, dict] = {}
+    for room_id, pid in result.all():
+        if not room_id:
+            continue
+        members.setdefault(room_id, {})[pid] = participant_lookup.get(pid, "")
+    return members
 
 
 def _build_survey_header() -> list[str]:
@@ -151,7 +216,10 @@ async def export_participant_table(
     """
     query = (
         select(Participant)
-        .options(selectinload(Participant.survey_response), selectinload(Participant.chat_rooms))
+        .options(
+            selectinload(Participant.survey_response),
+            selectinload(Participant.chat_rooms).selectinload(ChatRoom.messages),
+        )
         .order_by(Participant.created_at)
     )
     if not include_test:
@@ -159,23 +227,24 @@ async def export_participant_table(
     result = await db.execute(query)
     participants = result.scalars().all()
 
-    # Build lookup for partner resolution
+    # Build lookup for per-round partner resolution (shared HHC room_id, not Participant.partner_id)
     participant_lookup = await _build_participant_lookup(db)
+    room_members = await _build_hhc_room_members(db, participant_lookup)
     max_duration = get_chat_limits().max_duration
 
     output = io.StringIO()
-    writer = csv.writer(output)
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
-    # Header
     header = [
-        "display_id", "prolific_id", "task_type", "partnership", "partner_label",
-        "partner_display_id",
+        "display_id", "nickname", "avatar", "prolific_id",
+        "task_type", "partnership", "partner_label",
+        "partner_display_id_r1", "partner_display_id_r2",
         "current_round", "hhc_fallback", "is_finished", "is_timeout", "is_dropout",
     ]
     header += _build_survey_header()
     header += [
-        "chat_r1_turns", "chat_r1_duration", "chat_r1_over_max",
-        "chat_r2_turns", "chat_r2_duration", "chat_r2_over_max",
+        "chat_r1_turns", "chat_r1_duration", "chat_r1_over_max", "chat_r1_room_type",
+        "chat_r2_turns", "chat_r2_duration", "chat_r2_over_max", "chat_r2_room_type",
     ]
     header += ["created_at"]
     writer.writerow(header)
@@ -188,26 +257,22 @@ async def export_participant_table(
             except Exception:
                 prolific_id = "DECRYPT_ERROR"
 
-        # Resolve partner display_id
-        partner_display_id = ""
-        if p.partner_id and p.partner_id in participant_lookup:
-            partner_display_id = participant_lookup[p.partner_id]
+        r1_room = best_room_for_round(p.chat_rooms, 1)
+        r2_room = best_room_for_round(p.chat_rooms, 2)
+        partner_r1 = (
+            partner_display_for_room(r1_room, p.id, room_members, participant_lookup)
+            if r1_room else ""
+        )
+        partner_r2 = (
+            partner_display_for_room(r2_room, p.id, room_members, participant_lookup)
+            if r2_room else ""
+        )
 
         sr = p.survey_response
-        # Chat stats by round — keep room with most turns per round
-        chat_stats = {}
-        for room in p.chat_rooms:
-            rn = room.round_number
-            key_turns = f"r{rn}_turns"
-            user_msgs = sum(1 for m in room.messages if m.sender_role == SenderRole.user)
-            partner_msgs = sum(1 for m in room.messages if m.sender_role == SenderRole.partner)
-            complete_turns = min(user_msgs, partner_msgs)
-            if key_turns not in chat_stats or complete_turns > chat_stats[key_turns]:
-                chat_stats[f"r{rn}_turns"] = complete_turns
-                chat_stats[f"r{rn}_duration"] = room.duration_seconds or 0
-
-        r1_duration = chat_stats.get("r1_duration", "")
-        r2_duration = chat_stats.get("r2_duration", "")
+        r1_turns = _complete_turns(r1_room) if r1_room else ""
+        r2_turns = _complete_turns(r2_room) if r2_room else ""
+        r1_duration = (r1_room.duration_seconds or 0) if r1_room else ""
+        r2_duration = (r2_room.duration_seconds or 0) if r2_room else ""
         r1_over = duration_over_max(r1_duration or None, max_duration)
         r2_over = duration_over_max(r2_duration or None, max_duration)
         if should_exclude_from_export(
@@ -222,22 +287,24 @@ async def export_participant_table(
             continue
 
         row = [
-            p.display_id, prolific_id, p.task_type.value, p.partnership.value,
-            p.partner_label.value, partner_display_id,
+            p.display_id, p.nickname or "", p.avatar or "", prolific_id,
+            p.task_type.value, p.partnership.value, p.partner_label.value,
+            partner_r1, partner_r2,
             p.current_round, p.hhc_fallback, p.is_finished,
             p.is_timeout, p.is_dropout,
         ]
-        # Survey data
         if sr:
             row += _build_survey_row(sr)
         else:
             row += [""] * SURVEY_FIELD_COUNT
 
         row += [
-            chat_stats.get("r1_turns", ""), r1_duration, int(r1_over) if r1_duration != "" else "",
-            chat_stats.get("r2_turns", ""), r2_duration, int(r2_over) if r2_duration != "" else "",
+            r1_turns, r1_duration, int(r1_over) if r1_room else "",
+            r1_room.room_type.value if r1_room else "",
+            r2_turns, r2_duration, int(r2_over) if r2_room else "",
+            r2_room.room_type.value if r2_room else "",
         ]
-        row += [p.created_at.isoformat() if p.created_at else ""]
+        row += [format_export_timestamp(p.created_at)]
         writer.writerow(row)
 
     return output.getvalue()
@@ -275,15 +342,17 @@ async def export_chat_messages(
 
     # Build lookup for partner resolution
     participant_lookup = await _build_participant_lookup(db)
+    room_members = await _build_hhc_room_members(db, participant_lookup)
     max_duration = get_chat_limits().max_duration
 
     output = io.StringIO()
-    writer = csv.writer(output)
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
+    # timestamp sits before free-text so Excel does not swallow it into `text`
     writer.writerow([
-        "message_id", "display_id", "partner_display_id", "room_id", "round_number",
-        "room_type", "task_type", "sender_role", "text",
-        "turn_number", "created_at",
+        "message_id", "timestamp", "display_id", "nickname", "avatar",
+        "partner_display_id", "room_id", "round_number",
+        "room_type", "task_type", "sender_role", "turn_number", "text",
     ])
 
     # Group messages by room, then write with exchange-based turn counting.
@@ -317,16 +386,24 @@ async def export_chat_messages(
         ):
             continue
 
-        partner_display_id = ""
-        if participant.partner_id and participant.partner_id in participant_lookup:
-            partner_display_id = participant_lookup[participant.partner_id]
+        partner_display_id = partner_display_for_room(
+            room, participant.id, room_members, participant_lookup,
+        )
 
         writer.writerow([
-            str(msg.id), participant.display_id, partner_display_id,
-            room.room_id or "", room.round_number,
-            room.room_type.value, participant.task_type.value,
-            msg.sender_role.value, msg.text, export_turn,
-            msg.created_at.isoformat() if msg.created_at else "",
+            str(msg.id),
+            format_export_timestamp(msg.created_at),
+            participant.display_id,
+            participant.nickname or "",
+            participant.avatar or "",
+            partner_display_id,
+            room.room_id or "",
+            room.round_number,
+            room.room_type.value,
+            participant.task_type.value,
+            msg.sender_role.value,
+            export_turn,
+            msg.text,
         ])
 
     return output.getvalue()
