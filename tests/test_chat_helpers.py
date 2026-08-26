@@ -146,3 +146,117 @@ def test_should_remove_from_queue_rules():
     assert should_remove_from_queue(_Q(step=Step.instructions_r1)) is True
     assert should_remove_from_queue(_Q(step=Step.chat_r1), queued_seconds=10) is False
     assert should_remove_from_queue(_Q(step=Step.chat_r1), queued_seconds=200, hhc_timeout=120) is True
+
+
+def test_hmc_shared_turns_uses_complete_exchanges_when_messages_loaded():
+    import asyncio
+    from types import SimpleNamespace
+
+    from models.chat import SenderRole
+    from services.chat_context import get_shared_turns
+
+    room = SimpleNamespace(
+        room_type=RoomType.HMC,
+        turn_count=3,
+        messages=[
+            SimpleNamespace(sender_role=SenderRole.user),
+            SimpleNamespace(sender_role=SenderRole.user),
+            SimpleNamespace(sender_role=SenderRole.user),
+        ],
+        room_id=None,
+    )
+    participant = SimpleNamespace(id=None, partner_id=None)
+    assert asyncio.run(get_shared_turns(room, participant)) == 0
+
+
+def test_hmc_echoes_user_messages_before_llm_replies():
+    """Participants can send several messages while the LLM is still working."""
+    import asyncio
+    import json
+    import uuid
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fastapi import WebSocketDisconnect
+    from routers.chat import _handle_hmc_chat
+
+    class FakeWS:
+        def __init__(self):
+            self.incoming = asyncio.Queue()
+            self.sent = []
+
+        async def receive_text(self):
+            item = await self.incoming.get()
+            if isinstance(item, BaseException):
+                raise item
+            return item
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    class FakeSessionCM:
+        def __init__(self, session):
+            self._session = session
+
+        async def __aenter__(self):
+            return self._session
+
+        async def __aexit__(self, *args):
+            return False
+
+    async def _run():
+        ws = FakeWS()
+        room_id = uuid.uuid4()
+        room = SimpleNamespace(id=room_id, messages=[], turn_count=0)
+        participant = SimpleNamespace(
+            id=uuid.uuid4(),
+            display_id="P-TEST",
+            current_round=1,
+            partner_label=SimpleNamespace(value="chatbot"),
+            task_type=SimpleNamespace(value="emotionTask"),
+            current_step=SimpleNamespace(value="chat_r1"),
+        )
+        db = MagicMock()
+        db.add = MagicMock()
+        db.commit = AsyncMock()
+        db.rollback = AsyncMock()
+        db.refresh = AsyncMock()
+        db.execute = AsyncMock()
+
+        llm_db = MagicMock()
+        llm_db.add = MagicMock()
+        llm_db.commit = AsyncMock()
+        llm_db.rollback = AsyncMock()
+        llm_db.execute = AsyncMock()
+        llm_db.get = AsyncMock(return_value=None)
+        llm_db.scalar = AsyncMock(return_value=None)
+
+        async def slow_llm(*_args, **_kwargs):
+            await asyncio.sleep(0.25)
+            return "AI reply"
+
+        limits = SimpleNamespace(max_turns=15)
+
+        with (
+            patch("routers.chat.get_chat_limits", return_value=limits),
+            patch("routers.chat.llm.call_llm", side_effect=slow_llm),
+            patch("routers.chat.log_event", new_callable=AsyncMock),
+            patch("routers.chat.AsyncSessionLocal", lambda: FakeSessionCM(llm_db)),
+        ):
+            handler = asyncio.create_task(_handle_hmc_chat(ws, db, room, participant))
+            await ws.incoming.put(json.dumps({"type": "message", "text": "hello"}))
+            await ws.incoming.put(json.dumps({"type": "message", "text": "are you there"}))
+            await asyncio.sleep(0.08)
+            user_echoes = [m for m in ws.sent if m.get("sender_role") == "user"]
+            partner_echoes = [m for m in ws.sent if m.get("sender_role") == "partner"]
+            assert [m["text"] for m in user_echoes] == ["hello", "are you there"]
+            assert partner_echoes == []
+
+            await asyncio.sleep(0.7)
+            partner_echoes = [m for m in ws.sent if m.get("sender_role") == "partner"]
+            assert [m["text"] for m in partner_echoes] == ["AI reply", "AI reply"]
+
+            await ws.incoming.put(WebSocketDisconnect())
+            await asyncio.wait_for(handler, timeout=2)
+
+    asyncio.run(_run())

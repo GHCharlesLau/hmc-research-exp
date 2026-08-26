@@ -30,6 +30,7 @@ function chatApp() {
         userName: cfg.userName,
         userAvatar: cfg.userAvatar,
         roomId: cfg.roomId,
+        roomType: cfg.roomType || '',
 
         init() {
             if (this.showRetryDialog) {
@@ -70,18 +71,22 @@ function chatApp() {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === 'message') {
-                        const exists = this.messages.some(m =>
-                            m.turn_number === data.turn_number && m.sender_role === data.sender_role
-                        );
-                        if (!exists) {
+                        const pending = data.sender_role === 'user'
+                            ? this.messages.find(m => m.pending && m.sender_role === 'user' && m.text === data.text)
+                            : null;
+                        if (pending) {
+                            pending.msg_id = data.msg_id;
+                            pending.turn_number = data.turn_number;
+                            pending.pending = false;
+                        } else if (this.isDuplicateMessage(data)) {
+                            console.warn('[chat dedup] Dropped duplicate:', data.msg_id, data.turn_number, data.sender_role);
+                        } else {
                             this.messages.push(data);
                             this.turnCount = this.messages.length;
-                            if (data.shared_turns !== undefined && data.shared_turns > this.sharedTurns) {
-                                this.sharedTurns = data.shared_turns;
-                            }
                             this.$nextTick(() => this.scrollToBottom());
-                        } else {
-                            console.warn('[HHC dedup] Dropped duplicate:', data.turn_number, data.sender_role);
+                        }
+                        if (data.shared_turns !== undefined && data.shared_turns > this.sharedTurns) {
+                            this.sharedTurns = data.shared_turns;
                         }
                     } else if (data.type === 'chat_end') {
                         this.handleChatEnd(data.reason);
@@ -116,12 +121,33 @@ function chatApp() {
             };
         },
 
+        isDuplicateMessage(data) {
+            return this.messages.some(m => {
+                if (m.pending) return false;
+                if (data.msg_id && m.msg_id && m.msg_id === data.msg_id) return true;
+                return m.turn_number === data.turn_number
+                    && m.sender_role === data.sender_role
+                    && m.text === data.text;
+            });
+        },
+
         sendMessage() {
             const text = this.inputText.trim();
             if (!text || this.chatEnded || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
+            const clientId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+            this.messages.push({
+                client_id: clientId,
+                msg_id: clientId,
+                sender_role: 'user',
+                text,
+                turn_number: null,
+                pending: true,
+            });
+            this.turnCount = this.messages.length;
             this.ws.send(JSON.stringify({ type: 'message', text }));
             this.inputText = '';
+            this.$nextTick(() => this.scrollToBottom());
             this.$refs.chatInput.focus();
         },
 

@@ -99,7 +99,7 @@
     <!-- Chat messages -->
     <div class="chat-container" style="height: 450px;">
         <div class="chat-messages" x-ref="messages">
-            <template x-for="msg in messages" :key="msg.msg_id || (msg.turn_number + '-' + msg.sender_role)">
+            <template x-for="msg in messages" :key="msg.client_id || msg.msg_id || (msg.turn_number + '-' + msg.sender_role + '-' + (msg.text || '').slice(0, 24))">
                 <div class="chat-message" :class="msg.sender_role">
                     <img class="chat-avatar"
                          :src="msg.sender_role === 'user' ? userAvatar : partnerAvatar"

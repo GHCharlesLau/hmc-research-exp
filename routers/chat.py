@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
-from database import get_db
+from database import get_db, AsyncSessionLocal
 from models.participant import Participant, Step
 from models.chat import ChatRoom, ChatMessage, RoomType, SenderRole
 from services import llm, matchmaking
@@ -195,6 +196,7 @@ async def chat_page(request: Request, db: AsyncSession = Depends(get_db)):
         "userName": p["nickname"] or "",
         "partnerAvatar": partner_avatar,
         "partnerName": partner_name,
+        "roomType": room.room_type.value,
     }
 
     return request.app.state.templates.TemplateResponse("chat.html", {
@@ -400,18 +402,37 @@ async def chat_websocket(websocket: WebSocket, room_uuid: str):
 async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant: Participant):
     """Handle HMC (human-machine) chat via WebSocket.
 
-    Turn counting matches HHC: 1 turn = 1 exchange (user message + LLM reply).
-    Both messages in a pair share the same turn_number.
+    User messages are saved and echoed immediately so the participant can
+    keep typing while the LLM is still working. LLM replies are produced
+    in a background worker, one at a time, in send order.
     """
-    # BUG-09 FIX: Initialize exchange_count and chat_history from existing room messages
-    # This ensures correct turn counting after page refresh / WebSocket reconnect
-    chat_history: list[dict] = []
-    exchange_count = room.turn_count // 2  # recover from existing messages
-    for msg in room.messages:
-        role = "user" if msg.sender_role == SenderRole.user else "assistant"
-        chat_history.append({"role": role, "content": msg.text})
+    try:
+        await db.refresh(room, ["messages"])
+    except Exception:
+        pass
 
-    # Fetch R1 chat context for injection (only applicable in R2 with chatbot label)
+    by_turn: dict[int, dict] = {}
+    for msg in room.messages:
+        by_turn.setdefault(msg.turn_number, {})[msg.sender_role] = msg
+
+    chat_history: list[dict] = []
+    unpaired: list[tuple[int, str]] = []
+    for turn in sorted(by_turn):
+        pair = by_turn[turn]
+        user_m = pair.get(SenderRole.user)
+        partner_m = pair.get(SenderRole.partner)
+        if user_m and partner_m:
+            chat_history.append({"role": "user", "content": user_m.text})
+            chat_history.append({"role": "assistant", "content": partner_m.text})
+        elif user_m and not partner_m:
+            unpaired.append((turn, user_m.text))
+
+    next_turn = max((m.turn_number for m in room.messages), default=0)
+    completed_exchanges = min(
+        sum(1 for m in room.messages if m.sender_role == SenderRole.user),
+        sum(1 for m in room.messages if m.sender_role == SenderRole.partner),
+    )
+
     r1_context: str | None = None
     if participant.current_round == 2 and participant.partner_label.value == "chatbot":
         try:
@@ -422,9 +443,137 @@ async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant
             logger.error(f"Failed to load R1 context for {participant.display_id}: {e}", exc_info=True)
             r1_context = None
 
-    while True:
-        try:
-            data = json.loads(await websocket.receive_text())
+    effective_partner_label = participant.partner_label.value
+    if participant.current_round == 2:
+        effective_partner_label = "chatbot"
+        logger.info(f"Round 2 HMC: forcing chatbot prompt for {participant.id}")
+
+    max_turns = get_chat_limits().max_turns
+    llm_queue: asyncio.Queue = asyncio.Queue()
+    ws_lock = asyncio.Lock()
+    stop = asyncio.Event()
+    queued_llm = 0
+    room_uuid = room.id
+    participant_id = participant.id
+    display_id = participant.display_id
+    task_type = participant.task_type.value
+    step_value = participant.current_step.value
+    round_number = participant.current_round
+
+    async def send_json(payload: dict) -> None:
+        async with ws_lock:
+            await websocket.send_json(payload)
+
+    async def bump_turn_count(session) -> None:
+        await session.execute(
+            update(ChatRoom)
+            .where(ChatRoom.id == room_uuid)
+            .values(turn_count=ChatRoom.turn_count + 1)
+        )
+
+    async def llm_worker() -> None:
+        nonlocal completed_exchanges
+        while not stop.is_set():
+            try:
+                job = await asyncio.wait_for(llm_queue.get(), timeout=0.4)
+            except asyncio.TimeoutError:
+                continue
+            if job is None:
+                break
+            current_turn, user_text = job
+            chat_history.append({"role": "user", "content": user_text})
+            try:
+                async with AsyncSessionLocal() as llm_db:
+                    llm_response = await llm.call_llm(
+                        llm_db,
+                        task_type,
+                        effective_partner_label,
+                        chat_history,
+                        r1_context=r1_context,
+                        round_number=round_number,
+                    )
+                    llm_success = llm_response != llm.FALLBACK_RESPONSE
+                    await log_event(llm_db, participant_id, "llm_call", step_value, {
+                        "success": llm_success,
+                        "fallback": not llm_success,
+                        "task_type": task_type,
+                        "partner_label": effective_partner_label,
+                        "turn_number": current_turn,
+                        "r1_context_injected": r1_context is not None,
+                    })
+                    partner_msg = ChatMessage(
+                        chat_room_id=room_uuid,
+                        sender_role=SenderRole.partner,
+                        text=llm_response,
+                        turn_number=current_turn,
+                    )
+                    llm_db.add(partner_msg)
+                    try:
+                        await bump_turn_count(llm_db)
+                        await llm_db.commit()
+                    except IntegrityError:
+                        await llm_db.rollback()
+                        existing = await llm_db.scalar(
+                            select(ChatMessage).where(
+                                ChatMessage.chat_room_id == room_uuid,
+                                ChatMessage.sender_role == SenderRole.partner,
+                                ChatMessage.turn_number == current_turn,
+                            )
+                        )
+                        if existing:
+                            llm_response = existing.text
+                            partner_id = str(existing.id)
+                        else:
+                            raise
+                    else:
+                        partner_id = str(partner_msg.id)
+                chat_history.append({"role": "assistant", "content": llm_response})
+                completed_exchanges += 1
+                await send_json({
+                    "type": "message",
+                    "msg_id": partner_id,
+                    "sender_role": "partner",
+                    "text": llm_response,
+                    "turn_number": current_turn,
+                    "shared_turns": completed_exchanges,
+                })
+                if completed_exchanges >= max_turns:
+                    await asyncio.sleep(3)
+                    await send_json({"type": "chat_end", "reason": "max_turns"})
+                    stop.set()
+                    break
+            except Exception as e:
+                logger.error(f"HMC LLM worker error for {display_id}: {e}", exc_info=True)
+                chat_history.append({
+                    "role": "assistant",
+                    "content": llm.FALLBACK_RESPONSE,
+                })
+                try:
+                    await send_json({
+                        "type": "message",
+                        "msg_id": f"fallback-{current_turn}",
+                        "sender_role": "partner",
+                        "text": llm.FALLBACK_RESPONSE,
+                        "turn_number": current_turn,
+                        "shared_turns": completed_exchanges,
+                    })
+                except Exception:
+                    stop.set()
+                    break
+
+    worker_task = asyncio.create_task(llm_worker())
+    for turn, text in unpaired:
+        if queued_llm < max_turns:
+            await llm_queue.put((turn, text))
+            queued_llm += 1
+
+    try:
+        while not stop.is_set():
+            raw = await websocket.receive_text()
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
             msg_type = data.get("type")
 
             if msg_type == "message":
@@ -432,12 +581,9 @@ async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                 if not text:
                     continue
 
-                # Sanitize user input to prevent XSS
                 clean_text = bleach.clean(text, tags=[], strip=True)
-
-                # Save user message
-                room.turn_count += 1
-                current_turn = exchange_count + 1  # turn number for this exchange
+                next_turn += 1
+                current_turn = next_turn
                 user_msg = ChatMessage(
                     chat_room_id=room.id,
                     sender_role=SenderRole.user,
@@ -445,115 +591,54 @@ async def _handle_hmc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                     turn_number=current_turn,
                 )
                 db.add(user_msg)
-
-                # Build chat history for LLM (use clean text)
-                chat_history.append({"role": "user", "content": clean_text})
-
+                await bump_turn_count(db)
                 await db.commit()
 
-                # BUG-09 FIX: Include msg_id in echo for deduplication after reconnect
-                await websocket.send_json({
+                await send_json({
                     "type": "message",
                     "msg_id": str(user_msg.id),
                     "sender_role": "user",
                     "text": clean_text,
                     "turn_number": current_turn,
-                    "shared_turns": exchange_count,
+                    "shared_turns": completed_exchanges,
                 })
 
-                # Call LLM (skip if max turns reached)
-                max_turns = get_chat_limits().max_turns
-                if exchange_count < max_turns:
-                    # In R2, an HMC chat means the deception is over — force
-                    # the chatbot prompt (CHARACTER_PROMPT_A/B), never Tommy.
-                    # We are already inside _handle_hmc_chat, so room is HMC
-                    # by construction; the round check alone is sufficient.
-                    effective_partner_label = participant.partner_label.value
-                    if participant.current_round == 2:
-                        effective_partner_label = "chatbot"
-                        logger.info(f"Round 2 HMC: forcing chatbot prompt for {participant.id}")
-
-                    llm_response = await llm.call_llm(
-                        db,
-                        participant.task_type.value,
-                        effective_partner_label,
-                        chat_history,
-                        r1_context=r1_context,
-                        round_number=participant.current_round,
-                    )
-
-                    # Log LLM call event
-                    llm_latency = 0.0
-                    llm_success = llm_response != llm.FALLBACK_RESPONSE
-                    await log_event(db, participant.id, "llm_call", participant.current_step.value, {
-                        "success": llm_success,
-                        "fallback": not llm_success,
-                        "task_type": participant.task_type.value,
-                        "partner_label": effective_partner_label,
-                        "turn_number": current_turn,
-                        "r1_context_injected": r1_context is not None,
-                    })
-
-                    room.turn_count += 1
-                    partner_msg = ChatMessage(
-                        chat_room_id=room.id,
-                        sender_role=SenderRole.partner,
-                        text=llm_response,
-                        turn_number=current_turn,
-                    )
-                    db.add(partner_msg)
-                    chat_history.append({"role": "assistant", "content": llm_response})
-                    await db.commit()
-
-                    exchange_count += 1  # one full exchange completed
-
-                    # BUG-09 FIX: Include msg_id in partner reply for deduplication
-                    await websocket.send_json({
-                        "type": "message",
-                        "msg_id": str(partner_msg.id),
-                        "sender_role": "partner",
-                        "text": llm_response,
-                        "turn_number": current_turn,
-                        "shared_turns": exchange_count,
-                    })
-
-                    # Check max turns — delay before ending so user can see the response
-                    if exchange_count >= max_turns:
-                        await asyncio.sleep(3)  # Give user time to read the final response
-                        await websocket.send_json({"type": "chat_end", "reason": "max_turns"})
-                        break
-                else:
-                    await websocket.send_json({"type": "chat_end", "reason": "max_turns"})
-                    break
+                if queued_llm < max_turns:
+                    await llm_queue.put((current_turn, clean_text))
+                    queued_llm += 1
 
             elif msg_type == "history_request":
-                # BUG-09 FIX: Include msg_id and shared_turns in history for deduplication
+                await db.refresh(room, ["messages"])
                 for msg in room.messages:
-                    await websocket.send_json({
+                    await send_json({
                         "type": "message",
                         "msg_id": str(msg.id),
                         "sender_role": msg.sender_role.value,
                         "text": msg.text,
                         "turn_number": msg.turn_number,
-                        "shared_turns": msg.turn_number,  # for HMC, turn_number == exchange count
+                        "shared_turns": completed_exchanges,
                     })
 
-        except json.JSONDecodeError:
-            # B9: ignore malformed JSON, don't close connection
-            continue
-        except WebSocketDisconnect:
-            logger.info(f"Participant {participant.display_id} disconnected from HMC room {room.id}")
-            break
-        except Exception as e:
-            # BUG-23 FIX: Continue on transient errors instead of breaking.
-            # Previously, any exception (DB error, Redis error, etc.) would kill the
-            # entire HMC chat session. Now we log and continue, matching HHC resilience.
-            logger.error(f"HMC chat error for {participant.display_id}: {e}", exc_info=True)
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-            continue
+    except WebSocketDisconnect:
+        logger.info(f"Participant {display_id} disconnected from HMC room {room.id}")
+    except Exception as e:
+        logger.error(f"HMC chat error for {display_id}: {e}", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+    finally:
+        stop.set()
+        try:
+            llm_queue.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
+        worker_task.cancel()
+        try:
+            await worker_task
+        except (asyncio.CancelledError, Exception):
+            pass
+
 
 
 async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant: Participant):
@@ -682,8 +767,28 @@ async def _handle_hhc_chat(websocket: WebSocket, db, room: ChatRoom, participant
                                         turn_number=data["turn_number"],
                                     )
                                     listen_db.add(partner_msg)
-                                    await listen_db.commit()
-                                    local_msg_id = str(partner_msg.id)
+                                    try:
+                                        await listen_db.commit()
+                                        local_msg_id = str(partner_msg.id)
+                                    except IntegrityError:
+                                        # Stale WebSocket handler raced the unique
+                                        # (chat_room_id, sender_role, turn_number) constraint.
+                                        await listen_db.rollback()
+                                        raced = await listen_db.execute(
+                                            select(ChatMessage).where(
+                                                ChatMessage.chat_room_id == room.id,
+                                                ChatMessage.sender_role == SenderRole.partner,
+                                                ChatMessage.turn_number == data["turn_number"],
+                                            )
+                                        )
+                                        raced_row = raced.scalar_one_or_none()
+                                        if raced_row:
+                                            local_msg_id = str(raced_row.id)
+                                        logger.info(
+                                            "Skipped raced partner save for %s turn=%s",
+                                            participant.display_id,
+                                            data["turn_number"],
+                                        )
                             except Exception as save_err:
                                 logger.error(f"Failed to save partner message for {participant.display_id}: {save_err}")
                                 try:

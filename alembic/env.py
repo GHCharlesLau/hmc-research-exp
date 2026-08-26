@@ -1,13 +1,20 @@
 """Alembic environment. Uses sync psycopg2 so Render's sslmode=require URLs work."""
 
 import os
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 from urllib.parse import urlparse
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-from config import _convert_db_url
+# env.py lives in alembic/; project root (config.py, database.py) is one level up.
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from config import _convert_db_url, get_settings
 from database import Base
 from models import (  # noqa: F401
     Participant, ChatRoom, ChatMessage, SurveyResponse,
@@ -28,11 +35,14 @@ def _redacted_db_location(url: str) -> str:
     return f"{host}:{port}/{db}"
 
 
-db_url = os.environ.get("DATABASE_URL", "")
-if db_url:
-    db_url = _convert_db_url(db_url, "psycopg2")
-    # ConfigParser interpolates %; Render passwords are often percent-encoded.
-    config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
+# Alembic is synchronous. Always use psycopg2, never asyncpg (MissingGreenlet).
+# Prefer DATABASE_URL from the environment / .env; fall back to alembic.ini.
+db_url = os.environ.get("DATABASE_URL") or get_settings().DATABASE_URL
+if not db_url:
+    db_url = config.get_main_option("sqlalchemy.url") or ""
+db_url = _convert_db_url(db_url, "psycopg2")
+# ConfigParser interpolates %; Render passwords are often percent-encoded.
+config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)

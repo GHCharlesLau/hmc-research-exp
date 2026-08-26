@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.chat import ChatRoom, RoomType
+from models.chat import ChatRoom, RoomType, SenderRole
 from models.participant import Participant
 from services.chat_settings import get_chat_limits
 from services.matchmaking import get_hhc_peer_msg_count, get_redis
@@ -98,6 +98,10 @@ async def get_shared_turns(
 ) -> int:
     """Shared turn count for the current room (HMC or HHC)."""
     if room.room_type == RoomType.HMC:
+        if room.messages:
+            users = sum(1 for m in room.messages if m.sender_role == SenderRole.user)
+            partners = sum(1 for m in room.messages if m.sender_role == SenderRole.partner)
+            return min(users, partners)
         return hmc_shared_turns(room.turn_count)
     my_msgs = await get_hhc_peer_msg_count(room.room_id, str(participant.id))
     partner_msgs = 0

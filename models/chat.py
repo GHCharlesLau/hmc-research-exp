@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime, timezone
 from database import Base
@@ -52,6 +52,12 @@ class ChatRoom(Base):
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint(
+            "chat_room_id", "sender_role", "turn_number",
+            name="uq_chat_messages_room_role_turn",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     chat_room_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_rooms.id"), index=True)

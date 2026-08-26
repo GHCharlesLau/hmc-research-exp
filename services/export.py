@@ -359,6 +359,7 @@ async def export_chat_messages(
     current_room_id = None
     prev_sender = None
     sender_changes = 0
+    seen_exact: set[tuple] = set()
 
     for msg in messages:
         if msg.chat_room_id != current_room_id:
@@ -389,6 +390,17 @@ async def export_chat_messages(
         partner_display_id = partner_display_for_room(
             room, participant.id, room_members, participant_lookup,
         )
+
+        dup_key = (
+            participant.display_id,
+            room.room_id or "",
+            msg.sender_role.value,
+            msg.text,
+            format_export_timestamp(msg.created_at),
+        )
+        if dup_key in seen_exact:
+            continue
+        seen_exact.add(dup_key)
 
         writer.writerow([
             str(msg.id),

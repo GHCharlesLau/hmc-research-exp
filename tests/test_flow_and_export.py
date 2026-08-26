@@ -114,6 +114,13 @@ def test_best_room_for_round_prefers_more_turns():
     assert best_room_for_round([retry, keep, r2], 3) is None
 
 
+def test_chat_message_unique_constraint_declared():
+    from models.chat import ChatMessage
+
+    names = {c.name for c in ChatMessage.__table__.constraints if getattr(c, "name", None)}
+    assert "uq_chat_messages_room_role_turn" in names
+
+
 def test_convert_db_url_adds_driver():
     raw = "postgresql://user:pass@localhost:5432/db"
     assert _convert_db_url(raw, "asyncpg") == "postgresql+asyncpg://user:pass@localhost:5432/db"
